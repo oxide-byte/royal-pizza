@@ -4,7 +4,10 @@ use shared::models::{Order, Pizza};
 
 use super::error::ApiError;
 
-const API_BASE_URL: &str = "http://localhost:8080/api";
+const API_BASE_URL: &str = match option_env!("TRUNK_API_BASE_URL") {
+    Some(url) => url,
+    None => "http://localhost:8080/api", // Development fallback
+};
 
 /// Fetch all pizzas from the API
 pub async fn fetch_pizzas() -> Result<Vec<Pizza>, ApiError> {

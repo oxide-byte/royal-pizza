@@ -1,0 +1,69 @@
+version: '3.9'
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v2.6.0
+    container_name: royalpizza_db_dev
+    user: "0:0"  # Run as root to avoid permission issues in dev
+    ports:
+      - "8000:8000"
+    command: start --log debug --user root --pass root --bind 0.0.0.0:8000 file:/data/dev.db
+    volumes:
+      - surrealdb_dev_data:/data
+      - ./docker/init-db.surql:/init-db.surql:ro
+    environment:
+      - SURREAL_LOG=debug
+    networks:
+      - royal_pizza_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.dev.Dockerfile
+    container_name: royalpizza_backend_dev
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=ws://surrealdb:8000
+      - DATABASE_NAMESPACE=royalpizza
+      - DATABASE_NAME=development
+      - DATABASE_USERNAME=root
+      - DATABASE_PASSWORD=root
+      - HOST=0.0.0.0
+      - PORT=8080
+      - CORS_ALLOW_ORIGIN=http://localhost:3000
+      - RUST_LOG=debug
+    volumes:
+      - ./backend/src:/app/backend/src:ro
+      - ./shared/src:/app/shared/src:ro
+    depends_on:
+      - surrealdb
+    networks:
+      - royal_pizza_network
+    restart: on-failure
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.dev.Dockerfile
+    container_name: royalpizza_frontend_dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/frontend/src:ro
+      - ./frontend/index.html:/app/frontend/index.html:ro
+      - ./frontend/styles.css:/app/frontend/styles.css:ro
+      - ./frontend/Trunk.toml:/app/frontend/Trunk.toml:ro
+      - ./shared/src:/app/shared/src:ro
+    networks:
+      - royal_pizza_network
+    depends_on:
+      - backend
+
+volumes:
+  surrealdb_dev_data:
+    driver: local
+
+networks:
+  royal_pizza_network:
+    driver: bridge

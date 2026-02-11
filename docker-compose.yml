@@ -1,0 +1,66 @@
+version: '3.9'
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v2.6.0
+    container_name: royalpizza_db_prod
+    ports:
+      - "8000:8000"
+    command: start --log info --user root --pass ${DB_PASSWORD:-root} --bind 0.0.0.0:8000 file:/data/prod.db
+    volumes:
+      - surrealdb_prod_data:/data
+    environment:
+      - SURREAL_LOG=info
+    networks:
+      - royal_pizza_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: royalpizza_backend_prod
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env.production
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+    networks:
+      - royal_pizza_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: royalpizza_frontend_prod
+    ports:
+      - "3000:3000"
+    networks:
+      - royal_pizza_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  surrealdb_prod_data:
+    driver: local
+
+networks:
+  royal_pizza_network:
+    driver: bridge

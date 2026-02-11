@@ -1,5 +1,5 @@
 use crate::config::AppState;
-use crate::handlers::{order_handler, pizza_handler};
+use crate::handlers::{health_handler, order_handler, pizza_handler};
 use axum::{
     routing::{get, post},
     Router,
@@ -7,6 +7,8 @@ use axum::{
 
 pub fn create_router() -> Router<AppState> {
     Router::new()
+        // Health check
+        .route("/health", get(health_handler::health_check))
         // Pizza routes
         .route("/pizzas", get(pizza_handler::get_all_pizzas))
         .route("/pizzas/:id", get(pizza_handler::get_pizza_by_id))

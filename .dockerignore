@@ -1,0 +1,24 @@
+# Build artifacts
+target/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+.claude/
+
+# Git
+.git/
+
+# Documentation
+*.md
+!README.md
+
+# OS files
+.DS_Store
+
+# Environment files (explicitly copied when needed)
+.env*
+
+# Logs
+*.log

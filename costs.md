@@ -60,3 +60,15 @@
          claude-haiku-4-5:  40.2k input, 15.0k output, 836.9k cache read, 96.2k cache write ($0.3191)
         claude-sonnet-4-5:  5.5k input, 39.7k output, 5.7m cache read, 123.7k cache write ($4.65)
 ```
+
+### Phase 6: Docker & Deploy (Before Phase 5)
+```text
+❯ /cost                                                                                                                                                                
+  ⎿  Total cost:            $4.57                                                     
+     Total duration (API):  11m 56s                                                                                                                                    
+     Total duration (wall): 37m 59s                                                                                                                                    
+     Total code changes:    1016 lines added, 14 lines removed                                                                                                         
+     Usage by model:                                                                                                                                                   
+         claude-haiku-4-5:  33.8k input, 7.6k output, 378.5k cache read, 29.0k cache write ($0.1459)                                                                   
+        claude-sonnet-4-5:  554 input, 35.2k output, 3.9m cache read, 257.0k cache write ($4.43)   
+```
