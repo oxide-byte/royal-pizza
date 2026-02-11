@@ -6,9 +6,7 @@ services:
     container_name: royalpizza_db_prod
     ports:
       - "8000:8000"
-    command: start --log info --user root --pass ${DB_PASSWORD:-root} --bind 0.0.0.0:8000 file:/data/prod.db
-    volumes:
-      - surrealdb_prod_data:/data
+    command: start --log info --user root --pass ${DB_PASSWORD:-root} --bind 0.0.0.0:8000 memory
     environment:
       - SURREAL_LOG=info
     networks:

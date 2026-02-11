@@ -41,6 +41,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = create_db_client(&config.database).await?;
     tracing::info!("Connected to SurrealDB");
 
+    // Seed database if enabled
+    let should_seed = std::env::var("DATABASE_SEED")
+        .unwrap_or_else(|_| "true".to_string())
+        .parse::<bool>()
+        .unwrap_or(true);
+
+    if should_seed {
+        tracing::info!("Database seeding enabled");
+        match repository::seed::seed_database(&db, false).await {
+            Ok(_) => tracing::info!("Database initialization completed successfully"),
+            Err(e) => {
+                tracing::error!("Failed to seed database: {}", e);
+                return Err(e);
+            }
+        }
+    } else {
+        tracing::info!("Database seeding disabled via DATABASE_SEED=false");
+    }
+
     // Build AppState with Arc-wrapped dependencies
     let app_state = AppState {
         db: Arc::new(db),
