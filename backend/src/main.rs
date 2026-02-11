@@ -1,5 +1,100 @@
-// Royal Pizza Backend API Server
+use axum::Router;
+use std::sync::Arc;
+use tokio::signal;
+use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-fn main() {
-    println!("Royal Pizza Backend - Coming Soon!");
+mod config;
+mod handlers;
+mod middleware;
+mod repository;
+mod routes;
+mod services;
+mod utils;
+
+use config::{AppState, Config};
+use repository::db::create_db_client;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize tracing subscriber for structured logging
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "backend=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    // Load configuration from environment
+    dotenv::dotenv().ok();
+    let config = Config::from_env()
+        .map_err(|e| format!("Failed to load configuration: {}", e))?;
+
+    tracing::info!(
+        "Starting Royal Pizza Backend on {}:{}",
+        config.server.host,
+        config.server.port
+    );
+
+    // Create database connection
+    let db = create_db_client(&config.database).await?;
+    tracing::info!("Connected to SurrealDB");
+
+    // Build AppState with Arc-wrapped dependencies
+    let app_state = AppState {
+        db: Arc::new(db),
+        config: Arc::new(config.clone()),
+    };
+
+    // Create Axum router with routes and middleware
+    let app = Router::new()
+        .nest("/api", routes::api::create_router())
+        .layer(TraceLayer::new_for_http())
+        .layer(
+            CorsLayer::permissive()
+                .allow_origin(config.server.cors_allow_origin.parse::<axum::http::HeaderValue>().unwrap()),
+        )
+        .with_state(app_state);
+
+    // Start server with graceful shutdown
+    let addr = format!("{}:{}", config.server.host, config.server.port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!("Royal Pizza Backend listening on {}", addr);
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    tracing::info!("Server shutdown complete");
+    Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            tracing::info!("Shutdown signal received (Ctrl+C)");
+        },
+        _ = terminate => {
+            tracing::info!("Shutdown signal received (SIGTERM)");
+        },
+    }
 }

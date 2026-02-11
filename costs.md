@@ -12,7 +12,6 @@
         claude-sonnet-4-5:  219 input, 8.6k output, 1.0m cache read, 63.2k cache write ($1.13)
 ```
 
-
 ## Implementation Phase 1: Shared Data Models
 ```text
 ❯ /cost                                                                                                                                                                
@@ -24,4 +23,16 @@
          claude-haiku-4-5:  1.4k input, 187 output, 0 cache read, 0 cache write ($0.0023)                                                                              
         claude-sonnet-4-5:  116 input, 5.4k output, 631.2k cache read, 55.5k cache write ($0.80)
 
+```
+
+## Implementation Phase 2: Backend Foundation
+```text
+❯ /cost                                                                                                                                                                
+  ⎿  Total cost:            $2.82
+     Total duration (API):  9m 18s                                                                                                                                     
+     Total duration (wall): 42m 48s                                                                                                                                  
+     Total code changes:    912 lines added, 21 lines removed                                                                                                          
+     Usage by model:                                                                                                                                                   
+         claude-haiku-4-5:  13.1k input, 3.9k output, 165.1k cache read, 13.2k cache write ($0.0656)
+        claude-sonnet-4-5:  536 input, 31.9k output, 1.5m cache read, 190.8k cache write ($2.76)    
 ```

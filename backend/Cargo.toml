@@ -15,4 +15,6 @@ surrealdb = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+dotenv = "0.15"
 shared = { path = "../shared" }
