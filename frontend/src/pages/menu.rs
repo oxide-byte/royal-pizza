@@ -1,5 +1,4 @@
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use shared::models::{CustomPizza, PizzaSize};
 
 use crate::api::client::fetch_pizzas;
@@ -14,10 +13,10 @@ pub fn MenuPage() -> impl IntoView {
     let cart = use_cart();
 
     // Fetch pizzas from API
-    let pizzas = Resource::new(|| (), |_| async move { fetch_pizzas().await });
+    let pizzas = LocalResource::new(|| async move { fetch_pizzas().await });
 
     // Error state for API failures
-    let error_message = create_rw_signal(None::<String>);
+    let error_message = RwSignal::new(None::<String>);
 
     // Handle adding standard pizza to cart
     let add_standard_pizza = move |(pizza_id, size, quantity): (String, PizzaSize, u32)| {
@@ -78,14 +77,14 @@ pub fn MenuPage() -> impl IntoView {
                                             </div>
                                         </div>
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                                 Err(err) => {
                                     error_message.set(Some(err.user_message()));
                                     view! {
                                         <ErrorDisplay error=Signal::derive(move || error_message.get()) />
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                             })
                     }}

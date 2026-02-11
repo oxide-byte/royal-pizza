@@ -15,20 +15,20 @@ pub fn OrderPage() -> impl IntoView {
     let navigate = use_navigate();
 
     // Redirect to menu if cart is empty
-    create_effect(move |_| {
+    Effect::new(move |_| {
         if cart.is_empty() {
             navigate("/", Default::default());
         }
     });
 
     // Form state
-    let (customer_name, set_customer_name) = create_signal(String::new());
-    let (customer_phone, set_customer_phone) = create_signal(String::new());
-    let (pickup_date, set_pickup_date) = create_signal(String::new());
-    let (pickup_time, set_pickup_time) = create_signal(String::new());
-    let (validation_errors, set_validation_errors) = create_signal(Vec::<String>::new());
-    let (is_submitting, set_is_submitting) = create_signal(false);
-    let (api_error, set_api_error) = create_signal(None::<String>);
+    let (customer_name, set_customer_name) = signal(String::new());
+    let (customer_phone, set_customer_phone) = signal(String::new());
+    let (pickup_date, set_pickup_date) = signal(String::new());
+    let (pickup_time, set_pickup_time) = signal(String::new());
+    let (validation_errors, set_validation_errors) = signal(Vec::<String>::new());
+    let (is_submitting, set_is_submitting) = signal(false);
+    let (api_error, set_api_error) = signal(None::<String>);
 
     // Get current date/time for defaults
     let now = Utc::now();
@@ -36,7 +36,7 @@ pub fn OrderPage() -> impl IntoView {
     let default_time = (now + Duration::hours(1)).format("%H:%M").to_string();
 
     // Set defaults on mount
-    create_effect(move |_| {
+    Effect::new(move |_| {
         if pickup_date.get().is_empty() {
             set_pickup_date.set(default_date.clone());
         }
@@ -45,43 +45,45 @@ pub fn OrderPage() -> impl IntoView {
         }
     });
 
-    let cart_total = create_memo(move |_| cart.total());
-    let cart_items = create_memo(move |_| cart.items());
+    let cart_total = Memo::new(move |_| cart.total());
+    let cart_items = Memo::new(move |_| cart.items());
 
     // Validation function
     let validate_form = move || -> Vec<String> {
+        use shared::validation::{
+            validate_customer_name, validate_phone_number, validate_pickup_time,
+        };
+
         let mut errors = Vec::new();
 
-        let name = customer_name.get().trim().to_string();
-        if name.is_empty() {
-            errors.push("Customer name is required.".to_string());
-        } else if name.len() < 2 {
-            errors.push("Customer name must be at least 2 characters.".to_string());
-        } else if name.len() > 100 {
-            errors.push("Customer name cannot exceed 100 characters.".to_string());
+        // Validate customer name
+        if let Err(e) = validate_customer_name(&customer_name.get()) {
+            errors.push(e);
         }
 
-        let phone = customer_phone.get().trim().to_string();
-        if phone.is_empty() {
-            errors.push("Phone number is required.".to_string());
+        // Validate phone
+        if let Err(e) = validate_phone_number(&customer_phone.get()) {
+            errors.push(e);
         }
 
+        // Validate pickup time
         let date = pickup_date.get();
         let time = pickup_time.get();
         if date.is_empty() || time.is_empty() {
             errors.push("Pickup date and time are required.".to_string());
         } else {
-            // Validate pickup time is at least 30 minutes from now
-            if let Ok(pickup_datetime) = format!("{}T{}:00Z", date, time).parse::<DateTime<Utc>>() {
-                let min_pickup_time = Utc::now() + Duration::minutes(30);
-                if pickup_datetime < min_pickup_time {
-                    errors.push("Pickup time must be at least 30 minutes from now.".to_string());
+            if let Ok(pickup_datetime) =
+                format!("{}T{}:00Z", date, time).parse::<DateTime<Utc>>()
+            {
+                if let Err(e) = validate_pickup_time(pickup_datetime) {
+                    errors.push(e);
                 }
             } else {
                 errors.push("Invalid date or time format.".to_string());
             }
         }
 
+        // Validate cart
         if cart.is_empty() {
             errors.push("Cart is empty. Please add items before ordering.".to_string());
         }

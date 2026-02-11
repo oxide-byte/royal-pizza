@@ -1,7 +1,6 @@
 use axum::Router;
 use std::sync::Arc;
 use tokio::signal;
-use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -51,11 +50,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create Axum router with routes and middleware
     let app = Router::new()
         .nest("/api", routes::api::create_router())
+        .layer(axum::middleware::from_fn(
+            middleware::logging::log_request,
+        ))
         .layer(TraceLayer::new_for_http())
-        .layer(
-            CorsLayer::permissive()
-                .allow_origin(config.server.cors_allow_origin.parse::<axum::http::HeaderValue>().unwrap()),
-        )
+        .layer(middleware::cors::create_cors_layer(
+            &config.server.cors_allow_origin,
+        ))
         .with_state(app_state);
 
     // Start server with graceful shutdown

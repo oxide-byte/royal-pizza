@@ -1,4 +1,5 @@
 .idea
 .claude
 /target
+/frontend/dist
 .DS_Store

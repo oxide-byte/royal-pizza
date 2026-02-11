@@ -101,36 +101,30 @@ pub async fn get_order_by_id(db: &Surreal<Client>, id: &str) -> Result<Order, Ap
 }
 
 fn validate_order_request(request: &CreateOrderRequest) -> Result<(), AppError> {
+    use shared::validation::{
+        validate_customer_name, validate_order_items, validate_phone_number, validate_pickup_time,
+    };
+
     let mut errors = Vec::new();
 
-    // Validate customer name: 2-100 characters
-    let name_len = request.customer.name.trim().len();
-    if name_len < 2 || name_len > 100 {
-        errors.push("Customer name must be 2-100 characters".to_string());
+    // Validate customer name
+    if let Err(e) = validate_customer_name(&request.customer.name) {
+        errors.push(e);
     }
 
-    // Validate phone: non-empty
-    if request.customer.phone.trim().is_empty() {
-        errors.push("Phone number is required".to_string());
+    // Validate phone
+    if let Err(e) = validate_phone_number(&request.customer.phone) {
+        errors.push(e);
     }
 
-    // Validate items: at least 1 item
-    if request.items.is_empty() {
-        errors.push("At least one item is required".to_string());
+    // Validate pickup time
+    if let Err(e) = validate_pickup_time(request.pickup_time) {
+        errors.push(e);
     }
 
-    // Validate pickup time: ≥ 30 minutes from now
-    let now = Utc::now();
-    let min_pickup_time = now + Duration::minutes(30);
-    if request.pickup_time < min_pickup_time {
-        errors.push("Pickup time must be at least 30 minutes from now".to_string());
-    }
-
-    // Validate each item
-    for (idx, item) in request.items.iter().enumerate() {
-        if item.quantity < 1 {
-            errors.push(format!("Item {} must have quantity >= 1", idx + 1));
-        }
+    // Validate order items
+    if let Err(e) = validate_order_items(&request.items) {
+        errors.push(e);
     }
 
     if !errors.is_empty() {

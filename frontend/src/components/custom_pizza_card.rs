@@ -1,4 +1,4 @@
-use leptos::{ev, prelude::*};
+use leptos::prelude::*;
 use shared::models::{CustomPizza, PizzaSize};
 
 use crate::utils::format::format_currency;
@@ -10,16 +10,16 @@ const MIN_INSTRUCTIONS_LENGTH: usize = 10;
 pub fn CustomPizzaCard(
     #[prop(into)] on_add_to_cart: Callback<(CustomPizza, u32), ()>,
 ) -> impl IntoView {
-    let (instructions, set_instructions) = create_signal(String::new());
-    let (selected_size, set_selected_size) = create_signal(PizzaSize::Medium);
-    let (quantity, set_quantity) = create_signal(1u32);
-    let (show_added_feedback, set_show_added_feedback) = create_signal(false);
-    let (validation_error, set_validation_error) = create_signal(None::<String>);
+    let (instructions, set_instructions) = signal(String::new());
+    let (selected_size, set_selected_size) = signal(PizzaSize::Medium);
+    let (quantity, set_quantity) = signal(1u32);
+    let (show_added_feedback, set_show_added_feedback) = signal(false);
+    let (validation_error, set_validation_error) = signal(None::<String>);
 
-    let char_count = create_memo(move |_| instructions.get().len());
-    let remaining_chars = create_memo(move |_| MAX_INSTRUCTIONS_LENGTH - char_count.get());
+    let char_count = Memo::new(move |_| instructions.get().len());
+    let remaining_chars = Memo::new(move |_| MAX_INSTRUCTIONS_LENGTH - char_count.get());
 
-    let current_price = create_memo(move |_| {
+    let current_price = Memo::new(move |_| {
         let custom = CustomPizza {
             instructions: String::new(),
             size: selected_size.get(),
@@ -27,7 +27,7 @@ pub fn CustomPizzaCard(
         custom.get_price()
     });
 
-    let is_valid = create_memo(move |_| {
+    let is_valid = Memo::new(move |_| {
         let len = char_count.get();
         len >= MIN_INSTRUCTIONS_LENGTH && len <= MAX_INSTRUCTIONS_LENGTH
     });

@@ -1,4 +1,4 @@
-use leptos::{ev, prelude::*};
+use leptos::prelude::*;
 use shared::models::{Pizza, PizzaSize};
 
 use crate::utils::format::format_currency;
@@ -8,12 +8,13 @@ pub fn PizzaCard(
     pizza: Pizza,
     #[prop(into)] on_add_to_cart: Callback<(String, PizzaSize, u32), ()>,
 ) -> impl IntoView {
-    let (selected_size, set_selected_size) = create_signal(PizzaSize::Medium);
-    let (quantity, set_quantity) = create_signal(1u32);
-    let (show_added_feedback, set_show_added_feedback) = create_signal(false);
+    let (selected_size, set_selected_size) = signal(PizzaSize::Medium);
+    let (quantity, set_quantity) = signal(1u32);
+    let (show_added_feedback, set_show_added_feedback) = signal(false);
 
-    let current_price = create_memo(move |_| {
-        selected_size.get().get_price(&pizza.price)
+    let price = pizza.price.clone();
+    let current_price = Memo::new(move |_| {
+        selected_size.get().get_price(&price)
     });
 
     let add_to_cart = move |_| {
@@ -34,16 +35,15 @@ pub fn PizzaCard(
     view! {
         <div class="pizza-card">
             <div class="pizza-image">
-                {pizza.image_url.as_ref().map(|url| {
-                    view! { <img src={url.clone()} alt={pizza.name.clone()} /> }
-                }).unwrap_or_else(|| {
-                    view! { <div class="placeholder-image">"🍕"</div> }
-                })}
+                {match pizza.image_url.as_ref() {
+                    Some(url) => view! { <img src={url.clone()} alt={pizza.name.clone()} /> }.into_any(),
+                    None => view! { <div class="placeholder-image">"🍕"</div> }.into_any()
+                }}
             </div>
 
             <div class="pizza-info">
-                <h3 class="pizza-name">{&pizza.name}</h3>
-                <p class="pizza-description">{&pizza.description}</p>
+                <h3 class="pizza-name">{pizza.name.clone()}</h3>
+                <p class="pizza-description">{pizza.description.clone()}</p>
 
                 <div class="pizza-ingredients">
                     <strong>"Ingredients: "</strong>

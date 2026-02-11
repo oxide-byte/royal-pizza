@@ -9,9 +9,9 @@ pub fn CartSummary() -> impl IntoView {
     let cart = use_cart();
     let navigate = use_navigate();
 
-    let item_count = create_memo(move |_| cart.item_count());
-    let total = create_memo(move |_| cart.total());
-    let is_empty = create_memo(move |_| cart.is_empty());
+    let item_count = Memo::new(move |_| cart.item_count());
+    let total = Memo::new(move |_| cart.total());
+    let is_empty = Memo::new(move |_| cart.is_empty());
 
     let proceed_to_order = move |_| {
         navigate("/order", Default::default());

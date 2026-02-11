@@ -25,22 +25,28 @@ pub fn ConfirmationPage() -> impl IntoView {
     };
 
     // Fetch order details
-    let order = Resource::new(order_id, |id| async move {
+    let order = LocalResource::new(move || async move {
+        let id = order_id();
         fetch_order_by_id(&id).await
     });
 
-    let error_message = create_rw_signal(None::<String>);
-
-    let order_another = move |_| {
-        cart.clear();
-        navigate("/", Default::default());
-    };
+    let error_message = RwSignal::new(None::<String>);
 
     view! {
         <PageLayout>
             <div class="confirmation-page">
                 <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                    {move || {
+                    {
+                        let cart = cart.clone();
+                        let navigate = navigate.clone();
+                        move || {
+                        let cart = cart.clone();
+                        let navigate = navigate.clone();
+                        let order_another = move |_| {
+                            cart.clear();
+                            navigate("/", Default::default());
+                        };
+
                         order
                             .get()
                             .map(|result| match result {
@@ -58,18 +64,18 @@ pub fn ConfirmationPage() -> impl IntoView {
                                             <div class="order-details">
                                                 <div class="detail-section">
                                                     <h3>"Order Number"</h3>
-                                                    <p class="order-number">{&order_data.order_number}</p>
+                                                    <p class="order-number">{order_data.order_number.clone()}</p>
                                                 </div>
 
                                                 <div class="detail-section">
                                                     <h3>"Customer Information"</h3>
                                                     <p>
                                                         <strong>"Name: "</strong>
-                                                        {&order_data.customer.name}
+                                                        {order_data.customer.name.clone()}
                                                     </p>
                                                     <p>
                                                         <strong>"Phone: "</strong>
-                                                        {&order_data.customer.phone}
+                                                        {order_data.customer.phone.clone()}
                                                     </p>
                                                 </div>
 
@@ -129,7 +135,7 @@ pub fn ConfirmationPage() -> impl IntoView {
                                             </div>
                                         </div>
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                                 Err(err) => {
                                     error_message.set(Some(err.user_message()));
@@ -141,7 +147,7 @@ pub fn ConfirmationPage() -> impl IntoView {
                                             </button>
                                         </div>
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                             })
                     }}

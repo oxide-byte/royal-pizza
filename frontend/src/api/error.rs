@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// API error types
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ApiError {
     NetworkError(String),
     HttpError { status: u16, message: String },
