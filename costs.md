@@ -36,3 +36,15 @@
          claude-haiku-4-5:  13.1k input, 3.9k output, 165.1k cache read, 13.2k cache write ($0.0656)
         claude-sonnet-4-5:  536 input, 31.9k output, 1.5m cache read, 190.8k cache write ($2.76)    
 ```
+
+### Phase 3: Frontend Core
+```text
+❯ /cost                                                                                                                                                                
+  ⎿  Total cost:            $4.64                          
+     Total duration (API):  18m 57s                                                                                                                                    
+     Total duration (wall): 40m 17s                                                                                                                                    
+     Total code changes:    1982 lines added, 96 lines removed                                                                                                         
+     Usage by model:                                                                                                                                                   
+         claude-haiku-4-5:  25.9k input, 6.8k output, 204.5k cache read, 19.2k cache write ($0.1044)
+        claude-sonnet-4-5:  2.5k input, 59.3k output, 4.0m cache read, 165.8k cache write ($4.53)   
+```

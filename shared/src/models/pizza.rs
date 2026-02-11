@@ -40,7 +40,7 @@ impl PizzaSize {
 }
 
 /// Custom pizza order with special instructions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CustomPizza {
     pub instructions: String,
     pub size: PizzaSize,

@@ -24,7 +24,7 @@ tower = "0.5.3"
 tower-http = { version = "0.6.8", features = ["cors", "fs", "trace"] }
 
 # Frontend framework
-leptos = "0.8.15"
+leptos = { version = "0.8.15", features = ["csr"] }
 leptos_router = "0.8.11"
 
 # Database
@@ -36,6 +36,6 @@ web-sys = "0.3.85"
 gloo-net = "0.6.0"
 
 # Utilities
-uuid = { version = "1.20.0", features = ["v4", "serde"] }
+uuid = { version = "1.20.0", features = ["v4", "serde", "js"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
