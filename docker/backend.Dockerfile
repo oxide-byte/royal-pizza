@@ -8,6 +8,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY backend ./backend
 COPY shared ./shared
 COPY frontend ./frontend
+COPY database ./database
 
 # Build backend in release mode
 RUN cargo build --release --bin backend

@@ -24,7 +24,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=ws://surrealdb:8000
+      - DATABASE_URL=surrealdb:8000
       - DATABASE_NAMESPACE=royalpizza
       - DATABASE_NAME=development
       - DATABASE_USERNAME=root
@@ -36,6 +36,7 @@ services:
     volumes:
       - ./backend/src:/app/backend/src:ro
       - ./shared/src:/app/shared/src:ro
+      - ./database:/app/database:ro
     depends_on:
       - surrealdb
     networks:

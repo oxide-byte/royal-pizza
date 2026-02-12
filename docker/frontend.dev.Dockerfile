@@ -10,6 +10,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY frontend ./frontend
 COPY shared ./shared
+COPY backend ./backend
 
 WORKDIR /app/frontend
 

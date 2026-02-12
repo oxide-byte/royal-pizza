@@ -83,6 +83,7 @@ async fn execute_sql_script(
 
 /// Initialize database with schema only (no seed data)
 /// Useful for production environments where data should be loaded separately
+#[allow(dead_code)]
 pub async fn init_schema_only(
     db: &Surreal<Client>,
 ) -> Result<(), Box<dyn std::error::Error>> {

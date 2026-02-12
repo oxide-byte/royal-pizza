@@ -6,7 +6,7 @@ pub async fn query_all_available_pizzas(
     db: &Surreal<Client>,
 ) -> Result<Vec<Pizza>, surrealdb::Error> {
     let mut result = db
-        .query("SELECT * FROM pizza WHERE is_available = true")
+        .query("SELECT meta::id(id) AS id, * FROM pizza WHERE is_available = true")
         .await?;
 
     let pizzas: Vec<Pizza> = result.take(0)?;
@@ -18,7 +18,7 @@ pub async fn query_pizza_by_id(
     id: &str,
 ) -> Result<Option<Pizza>, surrealdb::Error> {
     let mut result = db
-        .query("SELECT * FROM pizza WHERE id = $id")
+        .query("SELECT meta::id(id) AS id, * FROM pizza WHERE id = $id")
         .bind(("id", id.to_string()))
         .await?;
 

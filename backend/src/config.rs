@@ -28,6 +28,7 @@ pub struct DatabaseConfig {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Surreal<Client>>,
+    #[allow(dead_code)]
     pub config: Arc<Config>,
 }
 

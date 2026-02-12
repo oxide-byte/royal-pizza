@@ -7,11 +7,21 @@ pub async fn create_order_in_db(
     order: &Order,
 ) -> Result<Order, surrealdb::Error> {
     let order_clone = order.clone();
-    let created: Option<Order> = db.create("order").content(order_clone).await?;
+    // Use the query interface to create and select with meta::id()
+    let mut result = db
+        .query("CREATE order CONTENT $order")
+        .query("SELECT meta::id(id) AS id, * FROM $parent")
+        .bind(("order", order_clone))
+        .await?;
 
-    created.ok_or_else(|| {
+    // Skip the first result (CREATE returns the Thing)
+    let _: Option<surrealdb::sql::Thing> = result.take(0)?;
+    // Take the second result (SELECT with string id)
+    let orders: Vec<Order> = result.take(1)?;
+
+    orders.into_iter().next().ok_or_else(|| {
         surrealdb::Error::Api(surrealdb::error::Api::Query(
-            "Failed to create order".to_string(),
+            "Failed to retrieve created order".to_string(),
         ))
     })
 }
@@ -21,7 +31,7 @@ pub async fn query_order_by_id(
     id: &str,
 ) -> Result<Option<Order>, surrealdb::Error> {
     let mut result = db
-        .query("SELECT * FROM order WHERE id = $id")
+        .query("SELECT meta::id(id) AS id, * FROM order WHERE id = $id")
         .bind(("id", id.to_string()))
         .await?;
 

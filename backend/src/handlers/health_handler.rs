@@ -48,7 +48,7 @@ struct DbHealth {
 /// Checks if the database is accessible and responsive
 async fn check_database_health(state: &AppState) -> DbHealth {
     // Try a simple query to verify database connectivity
-    match state.db.query("SELECT 1").await {
+    match state.db.query("SELECT * FROM pizza LIMIT 0").await {
         Ok(_) => DbHealth {
             is_connected: true,
             status: "connected".to_string(),

@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use std::time::Duration;
+use leptos::task::spawn_local;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToastType {
@@ -33,11 +33,15 @@ pub fn Toast(
         ToastType::Error => ("✕", "toast-error"),
     };
 
+    // Store values as owned for use in view
+    let icon_owned = icon.to_string();
+    let class_full = format!("toast {}", class_name);
+
     view! {
         <Show when=move || visible.get()>
-            <div class=format!("toast {}", class_name)>
-                <span class="toast-icon">{icon}</span>
-                <span class="toast-message">{message}</span>
+            <div class=class_full.clone()>
+                <span class="toast-icon">{icon_owned.clone()}</span>
+                <span class="toast-message">{message.clone()}</span>
                 <button
                     class="toast-close"
                     on:click=move |_| visible.set(false)

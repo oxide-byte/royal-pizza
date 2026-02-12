@@ -12,6 +12,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY backend ./backend
 COPY shared ./shared
 COPY frontend ./frontend
+COPY database ./database
 
 # Build in debug mode for faster compilation
 RUN cargo build --bin backend

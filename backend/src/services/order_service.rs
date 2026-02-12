@@ -1,7 +1,7 @@
 use crate::middleware::error::AppError;
 use crate::repository::{order_repo, pizza_repo};
 use crate::utils::order_number::generate_order_number;
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use shared::dto::{CreateOrderRequest, CreateOrderResponse};
 use shared::models::{Order, OrderItem, OrderItemType, OrderStatus};
 use surrealdb::engine::remote::ws::Client;
