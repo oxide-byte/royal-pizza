@@ -1,34 +1,28 @@
-# Stage 1: Dependency caching layer
-FROM rust:1.93-bookworm as chef
-RUN cargo install cargo-chef
+# Stage 1: Build application
+FROM rust:1.93-bookworm as builder
+
 WORKDIR /app
 
-# Stage 2: Analyze dependencies
-FROM chef AS planner
+# Copy workspace files
 COPY Cargo.toml Cargo.lock ./
-COPY backend/Cargo.toml ./backend/
-COPY shared/Cargo.toml ./shared/
-COPY frontend/Cargo.toml ./frontend/
-RUN cargo chef prepare --recipe-path recipe.json
-
-# Stage 3: Build dependencies (cached layer)
-FROM chef AS builder
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
-
-# Stage 4: Build application
 COPY backend ./backend
 COPY shared ./shared
 COPY frontend ./frontend
+
+# Build backend in release mode
 RUN cargo build --release --bin backend
 
-# Stage 5: Runtime image
+# Stage 2: Runtime image
 FROM debian:bookworm-slim
+
+# Install runtime dependencies
 RUN apt-get update && \
     apt-get install -y ca-certificates libssl3 curl && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Copy binary from builder
 COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 
 EXPOSE 8080

@@ -4,3 +4,5 @@ pub mod error_display;
 pub mod layout;
 pub mod loading;
 pub mod pizza_card;
+pub mod skeleton;
+pub mod toast;

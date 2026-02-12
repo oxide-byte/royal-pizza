@@ -56,28 +56,43 @@ pub fn MenuPage() -> impl IntoView {
                             .get()
                             .map(|result| match result {
                                 Ok(pizza_list) => {
-                                    view! {
-                                        <div class="menu-content">
-                                            <div class="pizza-grid">
-                                                {pizza_list
-                                                    .into_iter()
-                                                    .map(|pizza| {
-                                                        view! {
-                                                            <PizzaCard
-                                                                pizza=pizza
-                                                                on_add_to_cart=add_standard_pizza
-                                                            />
-                                                        }
-                                                    })
-                                                    .collect::<Vec<_>>()}
+                                    if pizza_list.is_empty() {
+                                        view! {
+                                            <div class="menu-content">
+                                                <div class="empty-state">
+                                                    <h3>"No pizzas available at the moment"</h3>
+                                                    <p>"We're working on restocking our menu. In the meantime, you can create a custom pizza!"</p>
+                                                </div>
+                                                <div class="custom-pizza-section">
+                                                    <CustomPizzaCard on_add_to_cart=add_custom_pizza />
+                                                </div>
                                             </div>
-
-                                            <div class="custom-pizza-section">
-                                                <CustomPizzaCard on_add_to_cart=add_custom_pizza />
-                                            </div>
-                                        </div>
-                                    }
+                                        }
                                         .into_any()
+                                    } else {
+                                        view! {
+                                            <div class="menu-content">
+                                                <div class="pizza-grid">
+                                                    {pizza_list
+                                                        .into_iter()
+                                                        .map(|pizza| {
+                                                            view! {
+                                                                <PizzaCard
+                                                                    pizza=pizza
+                                                                    on_add_to_cart=add_standard_pizza
+                                                                />
+                                                            }
+                                                        })
+                                                        .collect::<Vec<_>>()}
+                                                </div>
+
+                                                <div class="custom-pizza-section">
+                                                    <CustomPizzaCard on_add_to_cart=add_custom_pizza />
+                                                </div>
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
                                 }
                                 Err(err) => {
                                     error_message.set(Some(err.user_message()));
