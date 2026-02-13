@@ -67,7 +67,7 @@ The `init.surql` script includes a `DELETE` statement for the pizzas, making it 
 Environment variables required:
 
 ```bash
-DATABASE_URL=ws://localhost:8000
+DATABASE_URL=localhost:8000
 DATABASE_NAMESPACE=royalpizza
 DATABASE_NAME=development
 DATABASE_USERNAME=root

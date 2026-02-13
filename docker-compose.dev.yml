@@ -1,70 +1,46 @@
-version: '3.9'
+# Development Environment - Database Only
+# Start backend and frontend from your IDE for hot-reload and debugging
+#
+# Usage:
+#   docker-compose -f docker-compose.dev.yml up -d
+#
+# Then in separate terminals:
+#   Terminal 1: cd backend && cargo run
+#   Terminal 2: cd frontend && trunk serve
+
+version: '3.8'
 
 services:
   surrealdb:
     image: surrealdb/surrealdb:v2.6.0
     container_name: royalpizza_db_dev
-    user: "0:0"  # Run as root to avoid permission issues in dev
     ports:
       - "8000:8000"
-    command: start --log debug --user root --pass root --bind 0.0.0.0:8000 file:/data/dev.db
-    volumes:
-      - surrealdb_dev_data:/data
-      - ./docker/init-db.surql:/init-db.surql:ro
+    command: start --log debug --user root --pass root --bind 0.0.0.0:8000 memory
     environment:
       - SURREAL_LOG=debug
     networks:
-      - royal_pizza_network
-
-  backend:
-    build:
-      context: .
-      dockerfile: docker/backend.dev.Dockerfile
-    container_name: royalpizza_backend_dev
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_URL=surrealdb:8000
-      - DATABASE_NAMESPACE=royalpizza
-      - DATABASE_NAME=development
-      - DATABASE_USERNAME=root
-      - DATABASE_PASSWORD=root
-      - HOST=0.0.0.0
-      - PORT=8080
-      - CORS_ALLOW_ORIGIN=http://localhost:3000
-      - RUST_LOG=debug
-    volumes:
-      - ./backend/src:/app/backend/src:ro
-      - ./shared/src:/app/shared/src:ro
-      - ./database:/app/database:ro
-    depends_on:
-      - surrealdb
-    networks:
-      - royal_pizza_network
-    restart: on-failure
-
-  frontend:
-    build:
-      context: .
-      dockerfile: docker/frontend.dev.Dockerfile
-    container_name: royalpizza_frontend_dev
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend/src:/app/frontend/src:ro
-      - ./frontend/index.html:/app/frontend/index.html:ro
-      - ./frontend/styles.css:/app/frontend/styles.css:ro
-      - ./frontend/Trunk.toml:/app/frontend/Trunk.toml:ro
-      - ./shared/src:/app/shared/src:ro
-    networks:
-      - royal_pizza_network
-    depends_on:
-      - backend
-
-volumes:
-  surrealdb_dev_data:
-    driver: local
+      - royal_pizza_dev_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 networks:
-  royal_pizza_network:
+  royal_pizza_dev_network:
     driver: bridge
+
+# Development workflow:
+# 1. Start database: docker-compose -f docker-compose.dev.yml up -d
+# 2. Start backend: cd backend && cargo run
+# 3. Start frontend: cd frontend && trunk serve
+# 4. Access: Frontend at http://localhost:8080 (Trunk default), Backend API at http://localhost:8080
+#
+# Benefits:
+# - Fast iteration with hot-reload
+# - Full IDE debugging support
+# - No Docker rebuild on code changes
+# - Native Rust tooling (cargo check, clippy, etc.)

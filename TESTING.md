@@ -16,7 +16,7 @@ This document outlines all edge cases and error scenarios that need to be tested
 ### Service URLs
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8080/api
-- Database: ws://localhost:8000 (SurrealDB)
+- Database: localhost:8000 (SurrealDB)
 
 ---
 

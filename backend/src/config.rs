@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::sync::Arc;
 use surrealdb::engine::remote::ws::Client;
@@ -30,6 +31,21 @@ pub struct AppState {
     pub db: Arc<Surreal<Client>>,
     #[allow(dead_code)]
     pub config: Arc<Config>,
+    pub startup_time: DateTime<Utc>,
+}
+
+impl AppState {
+    pub fn new(db: Arc<Surreal<Client>>, config: Arc<Config>) -> Self {
+        Self {
+            db,
+            config,
+            startup_time: Utc::now(),
+        }
+    }
+
+    pub fn uptime_seconds(&self) -> i64 {
+        (Utc::now() - self.startup_time).num_seconds()
+    }
 }
 
 impl Config {

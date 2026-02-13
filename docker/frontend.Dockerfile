@@ -1,17 +1,23 @@
 # Stage 1: Build WASM application
 FROM rust:1.93-bookworm as builder
 
-# Install Trunk and wasm target
-RUN cargo install trunk && \
+# Install Trunk and wasm-bindgen-cli (required for WASM builds)
+RUN cargo install trunk wasm-bindgen-cli && \
     rustup target add wasm32-unknown-unknown
 
 WORKDIR /app
 
-# Copy workspace files
+# Copy workspace configuration first
 COPY Cargo.toml Cargo.lock ./
-COPY frontend ./frontend
+
+# Copy only the crates needed for frontend build
 COPY shared ./shared
-COPY backend ./backend
+COPY frontend ./frontend
+
+# Dummy backend to satisfy workspace (not actually built)
+RUN mkdir -p backend/src && \
+    echo 'fn main() {}' > backend/src/main.rs && \
+    echo '[package]\nname = "backend"\nversion = "0.1.0"\nedition = "2024"\n\n[dependencies]' > backend/Cargo.toml
 
 # Build frontend with Trunk
 WORKDIR /app/frontend
@@ -20,7 +26,9 @@ WORKDIR /app/frontend
 ARG API_BASE_URL=http://backend:8080/api
 ENV TRUNK_API_BASE_URL=${API_BASE_URL}
 
-RUN trunk build --release
+# Use Docker-specific config with wasm-opt disabled
+# This avoids memory issues in Docker builds while still using release mode
+RUN cp Trunk.docker.toml Trunk.toml && trunk build --release
 
 # Stage 2: Serve with nginx
 FROM nginx:1.27-alpine

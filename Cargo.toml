@@ -39,3 +39,16 @@ gloo-net = "0.6.0"
 uuid = { version = "1.20.0", features = ["v4", "serde", "js"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+
+# Production optimizations
+[profile.release]
+opt-level = 3              # Maximum optimization
+lto = true                 # Link-time optimization for smaller binary
+codegen-units = 1          # Better optimization (slower compile, smaller binary)
+strip = true               # Strip debug symbols
+panic = "abort"            # Reduce binary size by not unwinding
+overflow-checks = false    # Disable overflow checks in release
+
+[profile.release.package."*"]
+opt-level = 3
+codegen-units = 16         # Faster dependency compilation

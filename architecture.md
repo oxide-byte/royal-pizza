@@ -817,7 +817,7 @@ CMD ["cargo", "run", "--release"]
 
 ```bash
 # .env.development
-DATABASE_URL=ws://localhost:8000
+DATABASE_URL=localhost:8000
 DATABASE_NAMESPACE=royalpizza
 DATABASE_NAME=development
 RUST_LOG=debug

@@ -1,0 +1,14 @@
+[build]
+target = "index.html"
+dist = "dist"
+release = true
+# Disable wasm-opt to avoid memory issues in Docker
+wasm_opt = "0"
+
+[watch]
+ignore = ["dist"]
+
+[serve]
+address = "127.0.0.1"
+port = 3000
+open = false

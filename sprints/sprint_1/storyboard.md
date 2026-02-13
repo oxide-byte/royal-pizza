@@ -212,7 +212,7 @@ pub struct Pizza {
 - Add server startup with graceful shutdown
 
 **Environment Variables**:
-- `DATABASE_URL`: ws://localhost:8000
+- `DATABASE_URL`: localhost:8000
 - `DATABASE_NAMESPACE`: royalpizza
 - `DATABASE_NAME`: development
 - `PORT`: 8080

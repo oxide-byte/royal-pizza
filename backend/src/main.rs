@@ -61,10 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Build AppState with Arc-wrapped dependencies
-    let app_state = AppState {
-        db: Arc::new(db),
-        config: Arc::new(config.clone()),
-    };
+    let app_state = AppState::new(Arc::new(db), Arc::new(config.clone()));
 
     // Create Axum router with routes and middleware
     let app = Router::new()

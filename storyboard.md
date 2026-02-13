@@ -127,7 +127,7 @@ CORS_ALLOW_ORIGIN=http://localhost:3000,https://your-domain.com
 
 **Development**:
 ```bash
-DATABASE_URL=ws://localhost:8000
+DATABASE_URL=localhost:8000
 DATABASE_NAMESPACE=royalpizza
 DATABASE_NAME=development
 JWT_SECRET=dev-secret-change-in-production

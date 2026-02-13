@@ -4,12 +4,20 @@ services:
     container_name: royalpizza_db_prod
     ports:
       - "8000:8000"
-    command: start --log info --user root --pass ${DB_PASSWORD:-root} --bind 0.0.0.0:8000 memory
+    command: start --log info --user root --pass ${DB_PASSWORD:-root} --bind 0.0.0.0:8000 file:/data/database.db
     environment:
       - SURREAL_LOG=info
+    volumes:
+      - surrealdb_prod_data:/data
     networks:
       - royal_pizza_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   backend:
     build:
@@ -21,7 +29,8 @@ services:
     env_file:
       - .env.production
     depends_on:
-      - surrealdb
+      surrealdb:
+        condition: service_healthy
     networks:
       - royal_pizza_network
     restart: unless-stopped
@@ -30,6 +39,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   frontend:
     build:
@@ -38,6 +48,9 @@ services:
     container_name: royalpizza_frontend_prod
     ports:
       - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
       - royal_pizza_network
     restart: unless-stopped
@@ -46,6 +59,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
 
 volumes:
   surrealdb_prod_data:

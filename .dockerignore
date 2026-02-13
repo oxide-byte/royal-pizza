@@ -1,24 +1,106 @@
 # Build artifacts
 target/
 frontend/dist/
+**/target/
+**/dist/
+*.wasm
+*.wasm.d.ts
 
-# IDE
+# Dependencies
+node_modules/
+**/node_modules/
+
+# IDE and editors
 .idea/
 .vscode/
 .claude/
+*.swp
+*.swo
+*~
+.DS_Store
 
 # Git
 .git/
+.gitignore
+.gitattributes
 
-# Documentation
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Documentation (include only README in Docker context)
 *.md
 !README.md
+docs/
+
+# Environment files (explicitly copy when needed)
+.env*
+!.env.example
+
+# Test files
+tests/
+**/tests/
+e2e/
+**/*_test.rs
+**/*.test.*
+**/*.spec.*
+playwright-report/
+test-results/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+database/data/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.pid
+*.seed
+*.lock
+!Cargo.lock
 
 # OS files
 .DS_Store
+Thumbs.db
+desktop.ini
 
-# Environment files (explicitly copied when needed)
-.env*
+# Docker
+docker-compose*.yml
+!docker-compose.yml
+Dockerfile
+*.Dockerfile
+.dockerignore
 
-# Logs
-*.log
+# Scripts
+scripts/
+*.sh
+
+# Backup and temporary files
+*.bak
+*.backup
+*.old
+*.orig
+*~
+
+# Coverage reports
+coverage/
+*.profraw
+*.profdata
+
+# Rust specific
+**/*.rs.bk
+**/.cargo/
+**/rustfmt.toml
+**/clippy.toml
+
+# Sprint planning and project management
+todo.md
+TODO.md
+storyboard.md
+sprints/
+costs.md
+CLAUDE.md

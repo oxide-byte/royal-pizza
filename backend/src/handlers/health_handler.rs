@@ -33,7 +33,11 @@ pub async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<Va
         Json(json!({
             "status": overall_status,
             "service": "royal-pizza-backend",
-            "database": db_status.status,
+            "version": env!("CARGO_PKG_VERSION"),
+            "services": {
+                "database": db_status.status,
+            },
+            "uptime_seconds": state.uptime_seconds(),
             "timestamp": Utc::now().to_rfc3339()
         })),
     )
