@@ -1,1146 +1,2254 @@
-# Royal Pizza - Development Storyboard
+# Royal Pizza - Development Storyboard (Sprint 2)
 
 ## Executive Summary
 
-**Project**: Royal Pizza MVP - Online Pizza Ordering System
-**Timeline**: 7 days (56 hours)
-**Tech Stack**: Rust + Leptos + Axum + SurrealDB + Docker Compose
-**Delivery**: Fully functional POC with ordering capability
+**Project**: Royal Pizza - Production Hardening & Authentication
+**Timeline**: Sprint 2 - 8 days (64 hours)
+**Tech Stack**: Rust + Leptos + Axum + SurrealDB + Ferriskey IAM + Playwright
+**Delivery**: Production-ready system with authentication, E2E testing, and order history
 
 ---
 
-## Project Phases Overview
+## Project Phases Overview (Sprint 2)
 
 | Phase | Duration | Description |
 |-------|----------|-------------|
-| **Phase 0: Setup** | 4 hours | Workspace initialization, dependencies, project structure |
-| **Phase 1: Shared Models** | 3 hours | Data models, DTOs, validation logic |
-| **Phase 2: Backend Foundation** | 8 hours | Axum server, API endpoints, database integration |
-| **Phase 3: Frontend Core** | 12 hours | Leptos UI, routing, components, state management |
-| **Phase 4: Integration** | 6 hours | API client, end-to-end flow, error handling |
-| **Phase 5: Database** | 8 hours | SurrealDB schema, seed data, repository layer |
-| **Phase 6: Docker & Deploy** | 6 hours | Dockerfiles, docker-compose, environment config |
-| **Phase 7: Polish & Testing** | 9 hours | Error handling, validation, responsiveness, demo prep |
+| **Phase 8: Production Docker** | 4 hours | Clean docker-compose for production, separate dev/prod environments |
+| **Phase 9: Code Quality** | 6 hours | Review, refactor, clean Clippy warnings, optimize code |
+| **Phase 10: E2E Testing** | 10 hours | Playwright test suite, CI/CD integration, test automation |
+| **Phase 11: IAM Integration** | 12 hours | Integrate Ferriskey, JWT authentication, user management |
+| **Phase 12: Authenticated Orders** | 8 hours | Require authentication for orders, user-specific flows |
+| **Phase 13: Order History** | 10 hours | Store and retrieve order history, user dashboard |
+| **Phase 14: Documentation** | 4 hours | Update architecture.md, business.md, API docs |
+| **Phase 15: Final Testing** | 10 hours | Security audit, performance testing, production deployment |
 
-**Total Estimated Time**: 56 hours
+**Total Estimated Time**: 64 hours
 
 ---
 
-## Phase 0: Workspace Setup (4 hours)
+## Phase 8: Production Docker Configuration (4 hours)
 
-### Task 0.1: Initialize Workspace Structure
+### Task 8.1: Separate Development Environment
 **Estimation**: 1.5 hours
 **Priority**: Critical
+**Depends On**: Sprint 1 Phase 6
 
 **Deliverables**:
-- Create workspace `Cargo.toml` with members: `backend`, `frontend`, `shared`
-- Set up workspace.dependencies with exact versions from architecture.md
-- Configure edition = "2024", rust-version = "1.93"
-- Create module directories with basic `Cargo.toml` files
+- Clean existing `docker-compose.yml` to represent ONLY production environment
+- Create `docker-compose.dev.yml` for development with hot-reload support
+- Production docker-compose contains: database, backend, frontend (built)
+- Development workflow: Run database in Docker, start backend/frontend from IDE
+- Document both workflows in README
 
-**Files Created**:
+**Production docker-compose.yml**:
+```yaml
+version: '3.8'
+services:
+  database:
+    image: surrealdb/surrealdb:2.6.0
+    environment:
+      - SURREAL_USER=root
+      - SURREAL_PASS=${DB_ROOT_PASSWORD}
+    volumes:
+      - pizza_data:/data
+    ports:
+      - "8000:8000"
+    command: start --log trace file:/data/database.db
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      - DATABASE_URL=ws://database:8000
+      - RUST_LOG=info
+      - JWT_SECRET=${JWT_SECRET}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - database
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pizza_data:
 ```
-royal-pizza/
-├── Cargo.toml (workspace)
-├── shared/Cargo.toml
-├── backend/Cargo.toml
-└── frontend/Cargo.toml
+
+**Development Workflow**:
+- `docker-compose -f docker-compose.dev.yml up database` (only DB)
+- Run backend: `cd backend && cargo run`
+- Run frontend: `cd frontend && trunk serve`
+
+**Success Criteria**:
+- Production compose deploys full stack
+- Development compose runs only database
+- Clear documentation for both workflows
+
+---
+
+### Task 8.2: Environment Variable Management
+**Estimation**: 1 hour
+**Priority**: High
+**Depends On**: Task 8.1
+
+**Deliverables**:
+- Create `.env.production.example` template
+- Update `.env.development` for local IDE development
+- Add JWT secret generation script
+- Document all required environment variables
+- Add validation for missing environment variables in backend startup
+
+**Environment Variables**:
+
+**Production**:
+```bash
+# Database
+DB_ROOT_PASSWORD=<secure-password>
+DATABASE_URL=ws://database:8000
+DATABASE_NAMESPACE=royalpizza
+DATABASE_NAME=production
+
+# Backend
+JWT_SECRET=<generated-secret>
+FERRISKEY_URL=http://ferriskey:8081
+RUST_LOG=info
+PORT=8080
+
+# CORS
+CORS_ALLOW_ORIGIN=http://localhost:3000,https://your-domain.com
+```
+
+**Development**:
+```bash
+DATABASE_URL=ws://localhost:8000
+DATABASE_NAMESPACE=royalpizza
+DATABASE_NAME=development
+JWT_SECRET=dev-secret-change-in-production
+FERRISKEY_URL=http://localhost:8081
+RUST_LOG=debug
+PORT=8080
+CORS_ALLOW_ORIGIN=http://localhost:3000
+```
+
+**Files**:
+- `.env.production.example`
+- `.env.development`
+- `scripts/generate-jwt-secret.sh`
+
+---
+
+### Task 8.3: Health Checks & Monitoring
+**Estimation**: 1 hour
+**Priority**: Medium
+**Depends On**: Task 8.1
+
+**Deliverables**:
+- Add Docker health checks to all services
+- Implement readiness probe endpoints
+- Add service dependency health monitoring
+- Configure restart policies
+- Add logging configuration for production
+
+**Health Check Implementation**:
+```dockerfile
+# backend/Dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/api/health || exit 1
+```
+
+**Backend Health Endpoint Enhancement**:
+```rust
+// Check database, Ferriskey, and service health
+{
+  "status": "healthy",
+  "timestamp": "2026-02-13T10:00:00Z",
+  "services": {
+    "database": "connected",
+    "ferriskey": "reachable",
+    "uptime_seconds": 3600
+  }
+}
+```
+
+**File**: Update `backend/src/handlers/health.rs`
+
+---
+
+### Task 8.4: Production Optimization
+**Estimation**: 0.5 hours
+**Priority**: Medium
+**Depends On**: Task 8.3
+
+**Deliverables**:
+- Configure Rust release profile for optimal binary size
+- Enable LTO (Link Time Optimization)
+- Strip debug symbols
+- Optimize Docker layer caching
+- Add .dockerignore file
+
+**Cargo.toml optimization**:
+```toml
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+```
+
+**.dockerignore**:
+```
+target/
+.git/
+.env*
+*.md
+.vscode/
+.idea/
+node_modules/
+dist/
 ```
 
 **Success Criteria**:
-- `cargo check` runs successfully
-- All workspace members compile
+- Backend binary size < 20MB
+- Frontend WASM size < 2MB
+- Docker images use layer caching effectively
 
 ---
 
-### Task 0.2: Configure Backend Dependencies
-**Estimation**: 1 hour
-**Priority**: Critical
+## Phase 9: Code Quality & Refactoring (6 hours)
+
+### Task 9.1: Clippy Warnings Resolution
+**Estimation**: 2 hours
+**Priority**: High
+**Depends On**: Sprint 1 Phase 7
 
 **Deliverables**:
-- Configure `backend/Cargo.toml` with Axum, Tower, SurrealDB, Tokio, Serde
-- Set up tracing and tracing-subscriber for logging
-- Add UUID generation dependency
-- Reference shared module as workspace dependency
+- Run `cargo clippy --all-targets --all-features` across workspace
+- Fix all warnings and errors
+- Enable clippy in CI pipeline
+- Add `clippy.toml` with project-specific rules
+- Document any intentionally allowed warnings
 
-**Key Dependencies**:
+**Clippy Configuration** (`clippy.toml`):
 ```toml
-[dependencies]
-axum = { workspace = true }
-tower = { workspace = true }
-tower-http = { workspace = true, features = ["cors", "trace"] }
-tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-surrealdb = { workspace = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-shared = { path = "../shared" }
+# Deny clippy warnings in CI
+# cargo clippy -- -D warnings
+
+# Custom rules
+too-many-arguments-threshold = 5
+type-complexity-threshold = 250
 ```
+
+**Common Issues to Fix**:
+- Unnecessary clones
+- Redundant field names in struct initialization
+- Needless borrows
+- Unused imports
+- Inefficient string concatenation
+- Missing `#[must_use]` attributes
+
+**Files**: All Rust files in workspace
 
 ---
 
-### Task 0.3: Configure Frontend Dependencies
-**Estimation**: 1 hour
-**Priority**: Critical
+### Task 9.2: Code Review & Refactoring
+**Estimation**: 3 hours
+**Priority**: High
+**Depends On**: Task 9.1
 
 **Deliverables**:
-- Configure `frontend/Cargo.toml` with Leptos, Leptos Router
-- Add WASM dependencies: wasm-bindgen, web-sys, gloo-net
-- Create `Trunk.toml` for build configuration
-- Create `index.html` entry point
-- Reference shared module
+- Review all modules for code duplication
+- Extract common patterns into utilities
+- Improve error messages for better debugging
+- Add missing documentation comments
+- Refactor long functions (> 50 lines)
+- Improve type safety with newtype patterns
+- Remove dead code
 
-**Key Dependencies**:
-```toml
-[dependencies]
-leptos = { workspace = true }
-leptos_router = { workspace = true }
-wasm-bindgen = { workspace = true }
-web-sys = { workspace = true }
-gloo-net = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-shared = { path = "../shared" }
-```
+**Refactoring Targets**:
+1. **Error Handling**: Consolidate error types across modules
+2. **Validation Logic**: Move to shared crate for reuse
+3. **Repository Layer**: Add generic repository trait
+4. **API Client**: Extract common request/response handling
+5. **Constants**: Move magic numbers to configuration
 
----
-
-### Task 0.4: Shared Module Setup
-**Estimation**: 0.5 hours
-**Priority**: Critical
-
-**Deliverables**:
-- Configure `shared/Cargo.toml` with Serde, Chrono, UUID
-- Create `lib.rs` with module exports
-- Set up folder structure for models, dto, validation
-
-**Structure**:
-```
-shared/src/
-├── lib.rs
-├── models/
-│   ├── mod.rs
-│   ├── pizza.rs
-│   └── order.rs
-├── dto/
-│   └── mod.rs
-└── validation/
-    └── mod.rs
-```
-
----
-
-## Phase 1: Shared Data Models (3 hours)
-
-### Task 1.1: Pizza Domain Models
-**Estimation**: 1 hour
-**Priority**: Critical
-**Depends On**: Task 0.4
-
-**Deliverables**:
-- Define `Pizza` struct with id, name, description, ingredients, price, image_url, is_available
-- Define `PizzaPrice` struct with small, medium, large fields
-- Define `PizzaSize` enum (Small, Medium, Large)
-- Define `CustomPizza` struct with instructions and size
-- Add Serde derive macros for serialization
-
-**File**: `shared/src/models/pizza.rs`
-
-**Code Structure**:
+**Example Refactoring**:
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Pizza {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub ingredients: Vec<String>,
-    pub price: PizzaPrice,
-    pub image_url: Option<String>,
-    pub is_available: bool,
+// Before: Magic numbers
+if pickup_time < now + Duration::minutes(30) { ... }
+
+// After: Named constants
+const MIN_PICKUP_LEAD_TIME_MINUTES: i64 = 30;
+if pickup_time < now + Duration::minutes(MIN_PICKUP_LEAD_TIME_MINUTES) { ... }
+```
+
+**Files**: All Rust files, focus on:
+- `backend/src/handlers/`
+- `backend/src/services/`
+- `shared/src/validation/`
+
+---
+
+### Task 9.3: Performance Optimization
+**Estimation**: 1 hour
+**Priority**: Medium
+**Depends On**: Task 9.2
+
+**Deliverables**:
+- Profile backend API endpoints
+- Optimize database queries (add indexes if needed)
+- Reduce unnecessary allocations
+- Cache frequently accessed data (pizza menu)
+- Add connection pooling tuning
+- Benchmark critical paths
+
+**Optimization Areas**:
+1. **Database Queries**: Add prepared statements, batch operations
+2. **Serialization**: Use zero-copy deserialization where possible
+3. **Memory**: Reduce cloning, use references
+4. **Caching**: Add in-memory cache for pizza menu (updates rarely)
+
+**Performance Targets**:
+- API response time p95 < 100ms
+- Menu load time < 50ms
+- Order creation < 200ms
+- Database query time < 20ms
+
+**Tools**:
+- `cargo flamegraph` for profiling
+- `hyperfine` for benchmarking
+- SurrealDB query analyzer
+
+---
+
+## Phase 10: E2E Testing with Playwright (10 hours)
+
+### Task 10.1: Playwright Setup
+**Estimation**: 2 hours
+**Priority**: Critical
+**Depends On**: Phase 9
+
+**Deliverables**:
+- Initialize Playwright project in `e2e/` directory
+- Install Playwright with browsers (Chromium, Firefox, WebKit)
+- Configure TypeScript for tests
+- Set up test environment configuration
+- Create test utilities and helpers
+- Configure CI/CD integration
+
+**Project Structure**:
+```
+e2e/
+├── playwright.config.ts
+├── package.json
+├── tests/
+│   ├── auth.spec.ts
+│   ├── menu.spec.ts
+│   ├── ordering.spec.ts
+│   ├── order-history.spec.ts
+│   └── edge-cases.spec.ts
+├── fixtures/
+│   ├── users.json
+│   └── test-data.ts
+└── utils/
+    ├── auth.ts
+    ├── db-setup.ts
+    └── helpers.ts
+```
+
+**playwright.config.ts**:
+```typescript
+export default defineConfig({
+  testDir: './tests',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
+  use: {
+    baseURL: 'http://localhost:3000',
+    trace: 'on-first-retry',
+  },
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+  ],
+  webServer: {
+    command: 'docker-compose up',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+---
+
+### Task 10.2: Authentication Flow Tests
+**Estimation**: 2 hours
+**Priority**: Critical
+**Depends On**: Task 10.1, Phase 11 (parallel)
+
+**Deliverables**:
+- Test user registration flow
+- Test login with valid credentials
+- Test login with invalid credentials
+- Test logout functionality
+- Test JWT token persistence
+- Test token expiration handling
+- Test protected route access
+
+**Test Scenarios**:
+
+**File**: `e2e/tests/auth.spec.ts`
+
+```typescript
+test.describe('Authentication', () => {
+  test('should register new user', async ({ page }) => {
+    await page.goto('/register');
+    await page.fill('[name="email"]', 'test@example.com');
+    await page.fill('[name="password"]', 'SecurePass123!');
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL('/menu');
+  });
+
+  test('should login existing user', async ({ page }) => {
+    await page.goto('/login');
+    await page.fill('[name="email"]', 'test@example.com');
+    await page.fill('[name="password"]', 'SecurePass123!');
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL('/menu');
+  });
+
+  test('should reject invalid credentials', async ({ page }) => {
+    await page.goto('/login');
+    await page.fill('[name="email"]', 'test@example.com');
+    await page.fill('[name="password"]', 'WrongPassword');
+    await page.click('button[type="submit"]');
+    await expect(page.locator('.error')).toContainText('Invalid credentials');
+  });
+
+  test('should redirect to login when accessing protected route', async ({ page }) => {
+    await page.goto('/order-history');
+    await expect(page).toHaveURL('/login');
+  });
+});
+```
+
+---
+
+### Task 10.3: Ordering Flow Tests
+**Estimation**: 3 hours
+**Priority**: Critical
+**Depends On**: Task 10.2
+
+**Deliverables**:
+- Test complete ordering flow (authenticated user)
+- Test adding pizzas to cart
+- Test cart operations (add, remove, update quantity)
+- Test custom pizza ordering
+- Test order form validation
+- Test order submission
+- Test order confirmation page
+
+**Test Scenarios**:
+
+**File**: `e2e/tests/ordering.spec.ts`
+
+```typescript
+test.describe('Ordering Flow', () => {
+  test.beforeEach(async ({ page }) => {
+    // Login before each test
+    await loginUser(page, 'test@example.com', 'SecurePass123!');
+  });
+
+  test('should complete full ordering flow', async ({ page }) => {
+    // Browse menu
+    await page.goto('/menu');
+    await expect(page.locator('.pizza-card')).toHaveCount(9);
+
+    // Add pizza to cart
+    await page.locator('.pizza-card').first().locator('button:has-text("Add to Cart")').click();
+    await expect(page.locator('.cart-count')).toContainText('1');
+
+    // Proceed to order
+    await page.click('button:has-text("Proceed to Order")');
+    await expect(page).toHaveURL('/order');
+
+    // Fill order form
+    await page.fill('[name="phone"]', '+1234567890');
+    await page.fill('[name="pickup-date"]', getTomorrowDate());
+    await page.selectOption('[name="pickup-time"]', '18:00');
+
+    // Submit order
+    await page.click('button:has-text("Place Order")');
+
+    // Verify confirmation
+    await expect(page).toHaveURL(/\/confirmation\/.*/, { timeout: 5000 });
+    await expect(page.locator('.order-number')).toBeVisible();
+  });
+
+  test('should validate order form', async ({ page }) => {
+    await page.goto('/menu');
+    await page.locator('.pizza-card').first().locator('button:has-text("Add to Cart")').click();
+    await page.click('button:has-text("Proceed to Order")');
+
+    // Submit without phone
+    await page.click('button:has-text("Place Order")');
+    await expect(page.locator('.error')).toContainText('Phone is required');
+  });
+
+  test('should handle custom pizza', async ({ page }) => {
+    await page.goto('/menu');
+
+    // Add custom pizza
+    await page.locator('.custom-pizza-card').locator('textarea').fill('Extra cheese, no onions');
+    await page.locator('.custom-pizza-card').locator('select[name="size"]').selectOption('large');
+    await page.locator('.custom-pizza-card').locator('button:has-text("Add to Cart")').click();
+
+    await expect(page.locator('.cart-count')).toContainText('1');
+  });
+});
+```
+
+---
+
+### Task 10.4: Order History Tests
+**Estimation**: 1.5 hours
+**Priority**: High
+**Depends On**: Task 10.3
+
+**Deliverables**:
+- Test viewing order history
+- Test filtering orders by status
+- Test order details view
+- Test empty order history state
+- Test pagination (if implemented)
+
+**File**: `e2e/tests/order-history.spec.ts`
+
+---
+
+### Task 10.5: Edge Cases & Error Scenarios
+**Estimation**: 1.5 hours
+**Priority**: High
+**Depends On**: Task 10.4
+
+**Deliverables**:
+- Test network failures
+- Test invalid order IDs
+- Test expired JWT tokens
+- Test concurrent cart operations
+- Test browser back/forward navigation
+- Test page refresh with state
+- Test empty cart checkout attempt
+
+**File**: `e2e/tests/edge-cases.spec.ts`
+
+```typescript
+test.describe('Edge Cases', () => {
+  test('should handle network failure gracefully', async ({ page, context }) => {
+    await loginUser(page, 'test@example.com', 'SecurePass123!');
+
+    // Simulate offline
+    await context.setOffline(true);
+    await page.goto('/menu');
+
+    await expect(page.locator('.error-message')).toContainText('Network error');
+
+    // Restore connection
+    await context.setOffline(false);
+    await page.reload();
+    await expect(page.locator('.pizza-card')).toHaveCount(9);
+  });
+
+  test('should handle invalid order ID', async ({ page }) => {
+    await loginUser(page, 'test@example.com', 'SecurePass123!');
+    await page.goto('/confirmation/invalid-id-123');
+
+    await expect(page.locator('.error-message')).toContainText('Order not found');
+  });
+
+  test('should prevent checkout with empty cart', async ({ page }) => {
+    await loginUser(page, 'test@example.com', 'SecurePass123!');
+    await page.goto('/order');
+
+    await expect(page.locator('button:has-text("Place Order")')).toBeDisabled();
+  });
+});
+```
+
+---
+
+## Phase 11: IAM Integration with Ferriskey (12 hours)
+
+### Task 11.1: Ferriskey Setup & Configuration
+**Estimation**: 2 hours
+**Priority**: Critical
+**Depends On**: Phase 8
+
+**Deliverables**:
+- Clone and set up Ferriskey (https://github.com/ferriskey/ferriskey)
+- Add Ferriskey to docker-compose
+- Configure Ferriskey database and secrets
+- Set up Ferriskey admin user
+- Configure OAuth/OIDC settings
+- Document Ferriskey setup process
+
+**docker-compose.yml addition**:
+```yaml
+  ferriskey:
+    image: ferriskey/ferriskey:latest
+    environment:
+      - DATABASE_URL=postgresql://ferriskey:password@ferriskey-db:5432/ferriskey
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_EMAIL=admin@royalpizza.com
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    ports:
+      - "8081:8081"
+    depends_on:
+      - ferriskey-db
+
+  ferriskey-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=ferriskey
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=ferriskey
+    volumes:
+      - ferriskey_data:/var/lib/postgresql/data
+
+volumes:
+  pizza_data:
+  ferriskey_data:
+```
+
+**File**: Update `docker-compose.yml`
+
+---
+
+### Task 11.2: Backend JWT Authentication Middleware
+**Estimation**: 3 hours
+**Priority**: Critical
+**Depends On**: Task 11.1
+
+**Deliverables**:
+- Create JWT validation middleware
+- Integrate with Ferriskey for token verification
+- Extract user ID from JWT claims
+- Add authentication to protected routes
+- Handle token expiration and refresh
+- Add middleware to order endpoints
+
+**Middleware Implementation**:
+
+**File**: `backend/src/middleware/auth.rs`
+
+```rust
+use axum::{
+    extract::Request,
+    http::{header, StatusCode},
+    middleware::Next,
+    response::Response,
+};
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: String,        // User ID
+    pub email: String,
+    pub exp: usize,         // Expiration
+    pub iat: usize,         // Issued at
+}
+
+pub async fn auth_middleware(
+    mut req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let auth_header = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // Verify JWT with Ferriskey's public key
+    let decoding_key = DecodingKey::from_secret(
+        std::env::var("JWT_SECRET")
+            .expect("JWT_SECRET must be set")
+            .as_bytes()
+    );
+
+    let token_data = decode::<Claims>(
+        token,
+        &decoding_key,
+        &Validation::default(),
+    )
+    .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // Add user info to request extensions
+    req.extensions_mut().insert(token_data.claims);
+
+    Ok(next.run(req).await)
+}
+```
+
+**Apply to routes**:
+```rust
+// backend/src/routes/orders.rs
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/api/orders", post(create_order))
+        .route("/api/orders/:id", get(get_order))
+        .route("/api/orders/history", get(get_user_orders))
+        .layer(middleware::from_fn(auth_middleware))
 }
 ```
 
 ---
 
-### Task 1.2: Order Domain Models
-**Estimation**: 1.5 hours
+### Task 11.3: Frontend Authentication Service
+**Estimation**: 3 hours
 **Priority**: Critical
-**Depends On**: Task 1.1
+**Depends On**: Task 11.2
 
 **Deliverables**:
-- Define `Order` struct with id, order_number, customer, items, pickup_time, status, total_amount
-- Define `CustomerInfo` struct with name and phone
-- Define `OrderItem` struct with id, item_type, quantity, unit_price, subtotal
-- Define `OrderItemType` enum (StandardPizza, CustomPizza)
-- Define `OrderStatus` enum (Pending, Confirmed, Preparing, Ready, PickedUp, Cancelled)
-- Add Chrono DateTime fields with proper timezone handling
+- Create authentication API client
+- Implement login/logout functions
+- Store JWT in local storage or cookie
+- Add authentication state management (Leptos signals)
+- Create AuthContext for global auth state
+- Add token refresh logic
+- Handle authentication errors
+
+**File**: `frontend/src/services/auth.rs`
+
+```rust
+use leptos::*;
+use serde::{Deserialize, Serialize};
+use gloo_storage::{LocalStorage, Storage};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct User {
+    pub id: String,
+    pub email: String,
+    pub name: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AuthToken {
+    pub access_token: String,
+    pub expires_in: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct AuthState {
+    pub user: RwSignal<Option<User>>,
+    pub token: RwSignal<Option<String>>,
+    pub is_authenticated: Memo<bool>,
+}
+
+impl AuthState {
+    pub fn new() -> Self {
+        let token = create_rw_signal(
+            LocalStorage::get::<String>("auth_token").ok()
+        );
+        let user = create_rw_signal(None);
+
+        let is_authenticated = create_memo(move |_| {
+            token.get().is_some() && user.get().is_some()
+        });
+
+        Self {
+            user,
+            token,
+            is_authenticated,
+        }
+    }
+
+    pub async fn login(&self, email: &str, password: &str) -> Result<(), String> {
+        // Call Ferriskey login endpoint
+        let response = gloo_net::http::Request::post("http://localhost:8081/auth/login")
+            .json(&serde_json::json!({
+                "email": email,
+                "password": password
+            }))
+            .map_err(|e| e.to_string())?
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if response.ok() {
+            let auth_token: AuthToken = response
+                .json()
+                .await
+                .map_err(|e| e.to_string())?;
+
+            // Store token
+            LocalStorage::set("auth_token", &auth_token.access_token)
+                .map_err(|e| e.to_string())?;
+
+            self.token.set(Some(auth_token.access_token.clone()));
+
+            // Fetch user info
+            self.fetch_user_info().await?;
+
+            Ok(())
+        } else {
+            Err("Invalid credentials".to_string())
+        }
+    }
+
+    pub fn logout(&self) {
+        LocalStorage::delete("auth_token");
+        self.token.set(None);
+        self.user.set(None);
+    }
+
+    async fn fetch_user_info(&self) -> Result<(), String> {
+        // Fetch user info from backend using token
+        // Implementation details...
+        Ok(())
+    }
+}
+```
+
+---
+
+### Task 11.4: Login & Registration Pages
+**Estimation**: 3 hours
+**Priority**: Critical
+**Depends On**: Task 11.3
+
+**Deliverables**:
+- Create login page component
+- Create registration page component
+- Add form validation
+- Integrate with Ferriskey authentication
+- Add loading states and error handling
+- Style authentication pages
+- Add "Forgot Password" link (stub)
+
+**File**: `frontend/src/pages/login.rs`
+
+```rust
+use leptos::*;
+use crate::services::auth::AuthState;
+
+#[component]
+pub fn LoginPage() -> impl IntoView {
+    let auth_state = use_context::<AuthState>()
+        .expect("AuthState must be provided");
+
+    let (email, set_email) = create_signal(String::new());
+    let (password, set_password) = create_signal(String::new());
+    let (error, set_error) = create_signal(None::<String>);
+    let (loading, set_loading) = create_signal(false);
+
+    let on_submit = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        set_loading.set(true);
+        set_error.set(None);
+
+        spawn_local(async move {
+            match auth_state.login(&email.get(), &password.get()).await {
+                Ok(_) => {
+                    // Redirect to menu
+                    leptos_router::use_navigate()("/menu", Default::default());
+                }
+                Err(e) => {
+                    set_error.set(Some(e));
+                    set_loading.set(false);
+                }
+            }
+        });
+    };
+
+    view! {
+        <div class="login-page">
+            <h1>"Login to Royal Pizza"</h1>
+            <form on:submit=on_submit>
+                <div class="form-group">
+                    <label for="email">"Email"</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        required
+                        on:input=move |ev| set_email.set(event_target_value(&ev))
+                        prop:value=email
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="password">"Password"</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        on:input=move |ev| set_password.set(event_target_value(&ev))
+                        prop:value=password
+                    />
+                </div>
+
+                {move || error.get().map(|e| view! {
+                    <div class="error">{e}</div>
+                })}
+
+                <button
+                    type="submit"
+                    disabled=move || loading.get()
+                >
+                    {move || if loading.get() { "Logging in..." } else { "Login" }}
+                </button>
+            </form>
+
+            <p>
+                "Don't have an account? "
+                <a href="/register">"Register"</a>
+            </p>
+        </div>
+    }
+}
+```
+
+**File**: `frontend/src/pages/register.rs` (similar structure)
+
+---
+
+### Task 11.5: Protected Routes & Auth Guards
+**Estimation**: 1 hour
+**Priority**: High
+**Depends On**: Task 11.4
+
+**Deliverables**:
+- Create route guard component
+- Redirect unauthenticated users to login
+- Add navigation bar with login/logout
+- Show user info when authenticated
+- Handle token expiration gracefully
+
+**File**: `frontend/src/components/protected_route.rs`
+
+```rust
+use leptos::*;
+use leptos_router::*;
+use crate::services::auth::AuthState;
+
+#[component]
+pub fn ProtectedRoute(children: Children) -> impl IntoView {
+    let auth_state = use_context::<AuthState>()
+        .expect("AuthState must be provided");
+
+    create_effect(move |_| {
+        if !auth_state.is_authenticated.get() {
+            let navigate = use_navigate();
+            navigate("/login", Default::default());
+        }
+    });
+
+    view! {
+        <Show
+            when=move || auth_state.is_authenticated.get()
+            fallback=|| view! { <div>"Redirecting to login..."</div> }
+        >
+            {children()}
+        </Show>
+    }
+}
+```
+
+**Update routing**:
+```rust
+<Route path="/order" view=move || view! {
+    <ProtectedRoute>
+        <OrderPage/>
+    </ProtectedRoute>
+}/>
+```
+
+---
+
+## Phase 12: Authenticated Order Flow (8 hours)
+
+### Task 12.1: Update Order Model with User Association
+**Estimation**: 2 hours
+**Priority**: Critical
+**Depends On**: Phase 11
+
+**Deliverables**:
+- Add `user_id` field to Order model
+- Update database schema to include user_id
+- Add foreign key relationship (if supported)
+- Update order creation to include authenticated user
+- Remove customer name/phone from order form (use user profile)
+- Migration script for existing orders
 
 **File**: `shared/src/models/order.rs`
 
----
-
-### Task 1.3: Data Transfer Objects (DTOs)
-**Estimation**: 0.5 hours
-**Priority**: High
-**Depends On**: Task 1.2
-
-**Deliverables**:
-- Define `CreateOrderRequest` DTO
-- Define `OrderItemRequest` DTO
-- Define `CreateOrderResponse` DTO
-- Define `ErrorResponse` DTO
-- Define `GetPizzasResponse` DTO
-
-**File**: `shared/src/dto/mod.rs`
-
----
-
-## Phase 2: Backend Foundation (8 hours)
-
-### Task 2.1: Server Entry Point & Configuration
-**Estimation**: 1 hour
-**Priority**: Critical
-**Depends On**: Task 0.2
-
-**Deliverables**:
-- Create `backend/src/main.rs` with Tokio runtime setup
-- Create `backend/src/config.rs` with environment variable loading
-- Configure tracing subscriber for structured logging
-- Define `AppState` struct for dependency injection
-- Add server startup with graceful shutdown
-
-**Environment Variables**:
-- `DATABASE_URL`: ws://localhost:8000
-- `DATABASE_NAMESPACE`: royalpizza
-- `DATABASE_NAME`: development
-- `PORT`: 8080
-- `CORS_ALLOW_ORIGIN`: http://localhost:3000
-
----
-
-### Task 2.2: Database Connection & Repository
-**Estimation**: 2 hours
-**Priority**: Critical
-**Depends On**: Task 2.1
-
-**Deliverables**:
-- Create `backend/src/repository/db.rs` with SurrealDB connection pool
-- Create `backend/src/repository/pizza_repo.rs` with CRUD operations
-- Create `backend/src/repository/order_repo.rs` with CRUD operations
-- Implement async methods: `get_all_pizzas()`, `get_pizza_by_id()`, `create_order()`, `get_order_by_id()`
-- Handle database connection errors gracefully
-
-**Files**:
-```
-backend/src/repository/
-├── mod.rs
-├── db.rs
-├── pizza_repo.rs
-└── order_repo.rs
-```
-
----
-
-### Task 2.3: Error Handling Middleware
-**Estimation**: 1 hour
-**Priority**: High
-**Depends On**: Task 2.1
-
-**Deliverables**:
-- Create `backend/src/middleware/error.rs` with `AppError` enum
-- Implement `IntoResponse` for `AppError`
-- Define error types: NotFound, ValidationError, DatabaseError, InternalError
-- Create consistent JSON error response format
-- Map errors to appropriate HTTP status codes
-
-**File**: `backend/src/middleware/error.rs`
-
----
-
-### Task 2.4: Pizza Service & Handlers
-**Estimation**: 2 hours
-**Priority**: Critical
-**Depends On**: Task 2.2, Task 2.3
-
-**Deliverables**:
-- Create `backend/src/services/pizza_service.rs` with business logic
-- Create `backend/src/handlers/pizza_handler.rs` with route handlers
-- Implement `GET /api/pizzas` endpoint
-- Implement `GET /api/pizzas/:id` endpoint
-- Add proper error handling and response formatting
-
-**Endpoints**:
-- `GET /api/pizzas` → List all available pizzas
-- `GET /api/pizzas/:id` → Get specific pizza by ID
-
-**Files**:
-```
-backend/src/services/pizza_service.rs
-backend/src/handlers/pizza_handler.rs
-backend/src/routes/pizzas.rs
-```
-
----
-
-### Task 2.5: Order Service & Handlers
-**Estimation**: 2 hours
-**Priority**: Critical
-**Depends On**: Task 2.4
-
-**Deliverables**:
-- Create `backend/src/services/order_service.rs` with order creation logic
-- Create `backend/src/handlers/order_handler.rs` with route handlers
-- Implement `POST /api/orders` endpoint with validation
-- Implement `GET /api/orders/:id` endpoint
-- Create order number generator (format: "RP-YYYYMMDD-NNN")
-- Calculate order total amount
-- Validate pickup time (minimum 30 minutes from now, business hours)
-- Validate customer information
-
-**Validation Rules**:
-- Customer name: 2-100 characters
-- Phone: non-empty string
-- Pickup time: >= 30 minutes from now
-- Items: at least 1 item
-
-**Files**:
-```
-backend/src/services/order_service.rs
-backend/src/handlers/order_handler.rs
-backend/src/routes/orders.rs
-backend/src/utils/id_generator.rs
-```
-
----
-
-## Phase 3: Frontend Core (12 hours)
-
-### Task 3.1: Leptos App Setup & Routing
-**Estimation**: 1.5 hours
-**Priority**: Critical
-**Depends On**: Task 0.3
-
-**Deliverables**:
-- Create `frontend/src/main.rs` with WASM entry point
-- Create `frontend/src/app.rs` with root App component
-- Create `frontend/src/routes.rs` with route definitions
-- Configure Leptos Router with 3 routes:
-  - `/` → MenuPage
-  - `/order` → OrderPage
-  - `/confirmation/:id` → ConfirmationPage
-- Create basic page stubs
-
-**Routes**:
 ```rust
-<Router>
-    <Routes>
-        <Route path="/" view=MenuPage/>
-        <Route path="/order" view=OrderPage/>
-        <Route path="/confirmation/:id" view=ConfirmationPage/>
-    </Routes>
-</Router>
-```
-
----
-
-### Task 3.2: Cart State Management
-**Estimation**: 2 hours
-**Priority**: Critical
-**Depends On**: Task 3.1
-
-**Deliverables**:
-- Create `frontend/src/state/cart.rs` with `CartState` struct
-- Implement cart operations using Leptos RwSignal:
-  - `add_item()`: Add pizza to cart or increment quantity
-  - `remove_item()`: Remove item from cart
-  - `update_quantity()`: Change item quantity
-  - `clear()`: Empty cart
-  - `total()`: Calculate total price
-  - `item_count()`: Get total items in cart
-- Define `CartItem` struct with pizza_id, size, quantity, price
-
-**File**: `frontend/src/state/cart.rs`
-
----
-
-### Task 3.3: API Client Module
-**Estimation**: 1.5 hours
-**Priority**: Critical
-**Depends On**: Task 3.1
-
-**Deliverables**:
-- Create `frontend/src/api/client.rs` with HTTP client functions
-- Implement API calls using gloo-net:
-  - `fetch_pizzas() -> Result<Vec<Pizza>>`
-  - `fetch_pizza_by_id(id) -> Result<Pizza>`
-  - `create_order(request) -> Result<CreateOrderResponse>`
-  - `fetch_order_by_id(id) -> Result<Order>`
-- Handle JSON serialization/deserialization
-- Handle HTTP errors and map to user-friendly messages
-
-**API Base URL**: `http://localhost:8080/api` (configurable)
-
-**File**: `frontend/src/api/client.rs`
-
----
-
-### Task 3.4: Pizza Card Component
-**Estimation**: 2 hours
-**Priority**: Critical
-**Depends On**: Task 3.2
-
-**Deliverables**:
-- Create `frontend/src/components/pizza_card.rs`
-- Display pizza image (placeholder or URL)
-- Display pizza name, description, ingredients
-- Display prices for Small, Medium, Large
-- Size selection buttons/dropdown
-- "Add to Cart" button with quantity selector
-- Handle "Add to Cart" click event
-- Show visual feedback when item added
-
-**Props**:
-- `pizza: Pizza`
-- `on_add_to_cart: Callback<(pizza_id, size, quantity)>`
-
-**File**: `frontend/src/components/pizza_card.rs`
-
----
-
-### Task 3.5: Custom Pizza Component
-**Estimation**: 1.5 hours
-**Priority**: High
-**Depends On**: Task 3.4
-
-**Deliverables**:
-- Create custom pizza card component
-- Text area for special instructions (max 500 characters)
-- Size selection (Small, Medium, Large)
-- Price display based on size (fixed pricing)
-- "Add to Cart" button
-- Validation for instructions (non-empty, max length)
-
-**Pricing**:
-- Small: $10.99
-- Medium: $14.99
-- Large: $17.99
-
-**File**: `frontend/src/components/custom_pizza_card.rs`
-
----
-
-### Task 3.6: Menu Page Implementation
-**Estimation**: 2 hours
-**Priority**: Critical
-**Depends On**: Task 3.4, Task 3.5
-
-**Deliverables**:
-- Create `frontend/src/pages/menu.rs`
-- Fetch pizzas from API on page load
-- Display loading state while fetching
-- Display 9 pizza cards in responsive grid (3 columns on desktop, 1 on mobile)
-- Display custom pizza card
-- Show cart summary in header/sidebar (item count, total)
-- "Proceed to Order" button (navigates to /order)
-- Handle API errors gracefully
-
-**Layout**:
-```
-┌─────────────────────────────────────┐
-│  Header: Royal Pizza | Cart: 3 items│
-├─────────────────────────────────────┤
-│  ┌──────┐  ┌──────┐  ┌──────┐      │
-│  │Pizza1│  │Pizza2│  │Pizza3│      │
-│  └──────┘  └──────┘  └──────┘      │
-│  ┌──────┐  ┌──────┐  ┌──────┐      │
-│  │Pizza4│  │Pizza5│  │Pizza6│      │
-│  └──────┘  └──────┘  └──────┘      │
-│  ┌──────┐  ┌──────┐  ┌──────┐      │
-│  │Pizza7│  │Pizza8│  │Pizza9│      │
-│  └──────┘  └──────┘  └──────┘      │
-│  ┌─────────────────────────────┐   │
-│  │  Custom Pizza (Your Way)    │   │
-│  └─────────────────────────────┘   │
-└─────────────────────────────────────┘
-```
-
-**File**: `frontend/src/pages/menu.rs`
-
----
-
-### Task 3.7: Order Form Page
-**Estimation**: 2.5 hours
-**Priority**: Critical
-**Depends On**: Task 3.6
-
-**Deliverables**:
-- Create `frontend/src/pages/order.rs`
-- Display cart summary (items, quantities, prices, total)
-- Customer information form:
-  - Name input (required, 2-100 chars)
-  - Phone input (required, non-empty)
-- Pickup date/time picker:
-  - Date selector (today or future dates)
-  - Time selector (business hours, minimum 30 min from now)
-- Form validation on client side
-- "Place Order" button
-- Submit order to API
-- Handle loading state during submission
-- Navigate to confirmation page on success
-- Display errors on failure
-
-**Validation**:
-- Name: required, 2-100 characters
-- Phone: required, non-empty
-- Pickup time: must be at least 30 minutes from now
-- Cart: must have at least 1 item
-
-**File**: `frontend/src/pages/order.rs`
-
----
-
-### Task 3.8: Confirmation Page
-**Estimation**: 1 hour
-**Priority**: High
-**Depends On**: Task 3.7
-
-**Deliverables**:
-- Create `frontend/src/pages/confirmation.rs`
-- Extract order ID from URL params
-- Fetch order details from API
-- Display success message
-- Display order number (e.g., "RP-20260208-001")
-- Display customer name and phone
-- Display ordered items with quantities and prices
-- Display pickup time
-- Display total amount
-- "Order Another" button (navigate back to menu, clear cart)
-
-**File**: `frontend/src/pages/confirmation.rs`
-
----
-
-## Phase 4: Integration & Error Handling (6 hours)
-
-### Task 4.1: CORS Configuration
-**Estimation**: 0.5 hours
-**Priority**: Critical
-**Depends On**: Task 2.1
-
-**Deliverables**:
-- Create `backend/src/middleware/cors.rs`
-- Configure CORS with allowed origins from environment
-- Allow methods: GET, POST, OPTIONS
-- Allow headers: Content-Type, Authorization
-- Enable credentials if needed
-
-**File**: `backend/src/middleware/cors.rs`
-
----
-
-### Task 4.2: Request Logging Middleware
-**Estimation**: 0.5 hours
-**Priority**: Medium
-**Depends On**: Task 2.1
-
-**Deliverables**:
-- Create `backend/src/middleware/logging.rs`
-- Log incoming requests (method, path, status, duration)
-- Use tracing spans for request context
-- Integrate with tower-http tracing layer
-
-**File**: `backend/src/middleware/logging.rs`
-
----
-
-### Task 4.3: Frontend Error Handling
-**Estimation**: 2 hours
-**Priority**: High
-**Depends On**: Task 3.8
-
-**Deliverables**:
-- Create error boundary component
-- Handle API errors in all pages
-- Display user-friendly error messages
-- Implement retry mechanism for transient failures
-- Add error logging (console)
-- Create `ErrorDisplay` component for consistent error UI
-
-**Error Scenarios**:
-- Network failure
-- API returns 4xx/5xx
-- Invalid response format
-- Timeout
-
-**File**: `frontend/src/components/error_display.rs`
-
----
-
-### Task 4.4: Form Validation (Client & Server)
-**Estimation**: 2 hours
-**Priority**: High
-**Depends On**: Task 2.5, Task 3.7
-
-**Deliverables**:
-- Create `shared/src/validation/mod.rs` with validation functions
-- Validate customer name (length, characters)
-- Validate phone number (non-empty)
-- Validate pickup time (business hours, minimum lead time)
-- Validate order items (at least 1 item, valid pizza IDs)
-- Share validation logic between frontend and backend
-- Return validation errors with field-specific messages
-
-**Business Rules**:
-- Name: 2-100 characters, alphanumeric + spaces
-- Phone: non-empty string (no format validation for POC)
-- Pickup time: >= 30 minutes from now, within business hours (9 AM - 9 PM)
-
-**File**: `shared/src/validation/mod.rs`
-
----
-
-### Task 4.5: End-to-End Flow Testing
-**Estimation**: 1 hour
-**Priority**: High
-**Depends On**: Task 4.4
-
-**Deliverables**:
-- Manual testing of complete user journey
-- Test: Browse menu → Add items → Fill form → Submit → View confirmation
-- Test error scenarios: invalid input, API failures, empty cart
-- Verify data persistence in database
-- Test with different pizza sizes and quantities
-- Test custom pizza ordering
-
-**Test Cases**:
-1. Happy path: Order 2 pizzas, submit, verify confirmation
-2. Validation errors: Submit with empty name, invalid pickup time
-3. API failure: Stop backend, verify error handling
-4. Empty cart: Try to order without items
-5. Custom pizza: Order custom pizza with instructions
-
----
-
-## Phase 5: Database Setup (8 hours)
-
-### Task 5.1: SurrealDB Schema Definition
-**Estimation**: 2 hours
-**Priority**: Critical
-**Depends On**: Task 1.2
-
-**Deliverables**:
-- Create `database/schema.surql` with table definitions
-- Define `pizza` table schema (SCHEMAFULL)
-- Define `order` table schema (SCHEMAFULL)
-- Define field types matching Rust models
-- Create indexes: pizza_name_idx, order_number_idx, order_created_idx, order_pickup_idx
-- Document schema in comments
-
-**Schema Features**:
-- Strong typing with SurrealDB type system
-- Unique constraints on pizza names and order numbers
-- DateTime fields for created_at, updated_at, pickup_time
-- Nested objects for price and customer info
-
-**File**: `database/schema.surql`
-
----
-
-### Task 5.2: Database Initialization Script
-**Estimation**: 1 hour
-**Priority**: High
-**Depends On**: Task 5.1
-
-**Deliverables**:
-- Create `database/init.surql` with initial data
-- Insert 9 standard pizzas with realistic data
-- Set all pizzas to available
-- Add timestamps
-- Ensure script is idempotent (can be run multiple times)
-
-**9 Standard Pizzas**:
-1. Margherita - Classic tomato, mozzarella, and fresh basil
-2. Pepperoni - Loaded with pepperoni and mozzarella
-3. Hawaiian - Ham and pineapple with mozzarella
-4. Vegetarian - Mixed vegetables and mozzarella
-5. BBQ Chicken - BBQ sauce with grilled chicken
-6. Meat Lovers - Loaded with assorted meats
-7. Four Cheese - Blend of four artisan cheeses
-8. Spicy Italian - Italian sausage with hot peppers
-9. Mediterranean - Feta, olives, and sun-dried tomatoes
-
-**File**: `database/init.surql`
-
----
-
-### Task 5.3: Repository Implementation with Real DB
-**Estimation**: 3 hours
-**Priority**: Critical
-**Depends On**: Task 5.2
-
-**Deliverables**:
-- Implement `PizzaRepository` methods with SurrealDB queries
-- Implement `OrderRepository` methods with SurrealDB queries
-- Use parameterized queries to prevent SQL injection
-- Handle database connection errors
-- Implement transaction support for order creation
-- Add query logging for debugging
-
-**Methods**:
-- `get_all_pizzas()` → SELECT * FROM pizza WHERE is_available = true
-- `get_pizza_by_id(id)` → SELECT * FROM pizza WHERE id = $id
-- `create_order(order)` → INSERT INTO order {...}
-- `get_order_by_id(id)` → SELECT * FROM order WHERE id = $id
-
-**Files**: Update `backend/src/repository/pizza_repo.rs`, `backend/src/repository/order_repo.rs`
-
----
-
-### Task 5.4: Database Seeding & Migration
-**Estimation**: 1 hour
-**Priority**: High
-**Depends On**: Task 5.3
-
-**Deliverables**:
-- Create `backend/src/repository/seed.rs` with seeding function
-- Implement one-time database initialization
-- Check if data already exists before seeding
-- Run schema.surql and init.surql on startup (development only)
-- Add CLI flag or environment variable to control seeding
-
-**File**: `backend/src/repository/seed.rs`
-
----
-
-### Task 5.5: Database Connection Health Check
-**Estimation**: 1 hour
-**Priority**: Medium
-**Depends On**: Task 5.3
-
-**Deliverables**:
-- Implement `GET /api/health` endpoint
-- Check database connectivity
-- Return JSON with status and timestamp
-- Use in Docker health checks
-- Log health check results
-
-**Response Format**:
-```json
-{
-  "status": "healthy",
-  "database": "connected",
-  "timestamp": "2026-02-08T10:00:00Z"
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Order {
+    pub id: String,
+    pub order_number: String,
+    pub user_id: String,              // NEW: Associated user
+    pub customer_name: String,         // From user profile
+    pub customer_email: String,        // From user profile
+    pub customer_phone: String,        // From user profile (or order form)
+    pub items: Vec<OrderItem>,
+    pub pickup_time: DateTime<Utc>,
+    pub status: OrderStatus,
+    pub total_amount: f64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 ```
 
-**File**: `backend/src/handlers/health.rs`
+**Database Schema Update**:
+
+**File**: `database/schema_v2.surql`
+
+```sql
+DEFINE TABLE order SCHEMAFULL;
+DEFINE FIELD user_id ON TABLE order TYPE string ASSERT $value != NONE;
+DEFINE FIELD order_number ON TABLE order TYPE string ASSERT $value != NONE;
+DEFINE FIELD customer_name ON TABLE order TYPE string;
+DEFINE FIELD customer_email ON TABLE order TYPE string;
+DEFINE FIELD customer_phone ON TABLE order TYPE string;
+DEFINE FIELD items ON TABLE order TYPE array;
+DEFINE FIELD pickup_time ON TABLE order TYPE datetime;
+DEFINE FIELD status ON TABLE order TYPE string;
+DEFINE FIELD total_amount ON TABLE order TYPE number;
+DEFINE FIELD created_at ON TABLE order TYPE datetime;
+DEFINE FIELD updated_at ON TABLE order TYPE datetime;
+
+DEFINE INDEX order_user_idx ON TABLE order COLUMNS user_id;
+DEFINE INDEX order_number_idx ON TABLE order COLUMNS order_number UNIQUE;
+```
 
 ---
 
-## Phase 6: Docker & Deployment (6 hours)
-
-### Task 6.1: Backend Dockerfile
-**Estimation**: 1.5 hours
-**Priority**: Critical
-**Depends On**: Task 2.5
-
-**Deliverables**:
-- Create `backend/Dockerfile` with multi-stage build
-- Stage 1: Build backend with cargo build --release
-- Stage 2: Minimal runtime image with Debian slim
-- Install CA certificates and OpenSSL
-- Copy binary from builder
-- Expose port 8080
-- Set CMD to run backend binary
-
-**Optimizations**:
-- Use Rust 1.93 as builder
-- Strip debug symbols for smaller binary
-- Minimal runtime dependencies
-
-**File**: `backend/Dockerfile`
-
----
-
-### Task 6.2: Frontend Dockerfile
+### Task 12.2: Backend Order Endpoints with Authentication
 **Estimation**: 2 hours
 **Priority**: Critical
-**Depends On**: Task 3.8
+**Depends On**: Task 12.1
 
 **Deliverables**:
-- Create `frontend/Dockerfile` with multi-stage build
-- Stage 1: Install Trunk, build WASM with trunk build --release
-- Stage 2: Create simple Axum static file server
-- Copy dist/ folder from builder
-- Serve static files on port 3000
-- Create `frontend/server.rs` for static serving
+- Update `create_order` handler to extract user from JWT
+- Associate order with authenticated user automatically
+- Fetch customer info from user profile or Ferriskey
+- Update order validation logic
+- Add authorization checks (users can only view their own orders)
 
-**Server Features**:
-- Serve index.html, .wasm, .js, .css files
-- Enable SPA routing (fallback to index.html)
-- CORS headers if needed
+**File**: `backend/src/handlers/order_handler.rs`
 
-**Files**:
-- `frontend/Dockerfile`
-- `frontend/server.rs`
+```rust
+use axum::{Extension, Json};
+use crate::middleware::auth::Claims;
+
+pub async fn create_order(
+    Extension(claims): Extension<Claims>,  // Injected by auth middleware
+    State(state): State<AppState>,
+    Json(request): Json<CreateOrderRequest>,
+) -> Result<Json<CreateOrderResponse>, AppError> {
+    // User is authenticated, extract user_id from claims
+    let user_id = claims.sub;
+
+    // Fetch user profile from Ferriskey or local cache
+    let user_profile = fetch_user_profile(&user_id, &state).await?;
+
+    // Create order with user info
+    let order = Order {
+        id: Uuid::new_v4().to_string(),
+        order_number: generate_order_number(),
+        user_id: user_id.clone(),
+        customer_name: user_profile.name.clone(),
+        customer_email: claims.email.clone(),
+        customer_phone: request.phone.unwrap_or(user_profile.phone),
+        items: request.items,
+        pickup_time: request.pickup_time,
+        status: OrderStatus::Pending,
+        total_amount: calculate_total(&request.items),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    // Save to database
+    let saved_order = state.order_repo.create_order(order).await?;
+
+    Ok(Json(CreateOrderResponse {
+        order_id: saved_order.id,
+        order_number: saved_order.order_number,
+        estimated_pickup: saved_order.pickup_time,
+    }))
+}
+
+pub async fn get_order(
+    Extension(claims): Extension<Claims>,
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+) -> Result<Json<Order>, AppError> {
+    let order = state.order_repo.get_order_by_id(&order_id).await?;
+
+    // Authorization: only allow user to view their own orders
+    if order.user_id != claims.sub {
+        return Err(AppError::Forbidden("You can only view your own orders".to_string()));
+    }
+
+    Ok(Json(order))
+}
+```
 
 ---
 
-### Task 6.3: Docker Compose Configuration
-**Estimation**: 1.5 hours
+### Task 12.3: Frontend Order Flow Updates
+**Estimation**: 2 hours
 **Priority**: Critical
-**Depends On**: Task 6.1, Task 6.2
+**Depends On**: Task 12.2
 
 **Deliverables**:
-- Create `docker-compose.yml` with 3 services:
-  1. `database`: SurrealDB with file-based storage
-  2. `backend`: Axum API server
-  3. `frontend`: Leptos web app
-- Configure service dependencies and health checks
-- Set up named volumes for database persistence
-- Configure network for service communication
-- Map ports: 8000 (DB), 8080 (API), 3000 (Web)
-- Set environment variables from .env files
+- Update order page to not ask for name (use authenticated user)
+- Simplify order form (only phone and pickup time)
+- Pre-fill phone from user profile if available
+- Add JWT token to all API requests
+- Update API client to include Authorization header
+- Handle 401 Unauthorized responses (redirect to login)
 
-**Health Checks**:
-- Database: curl http://localhost:8000/health
-- Backend: curl http://localhost:8080/api/health
+**File**: `frontend/src/api/client.rs`
 
-**File**: `docker-compose.yml`
+```rust
+use gloo_storage::{LocalStorage, Storage};
+
+async fn get_auth_header() -> Option<String> {
+    LocalStorage::get::<String>("auth_token")
+        .ok()
+        .map(|token| format!("Bearer {}", token))
+}
+
+pub async fn create_order(request: CreateOrderRequest) -> Result<CreateOrderResponse, String> {
+    let auth_header = get_auth_header()
+        .ok_or("Not authenticated")?;
+
+    let response = gloo_net::http::Request::post("http://localhost:8080/api/orders")
+        .header("Authorization", &auth_header)
+        .json(&request)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if response.status() == 401 {
+        // Token expired, redirect to login
+        return Err("Session expired. Please login again.".to_string());
+    }
+
+    if response.ok() {
+        response.json().await.map_err(|e| e.to_string())
+    } else {
+        let error: ErrorResponse = response
+            .json()
+            .await
+            .unwrap_or_else(|_| ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
+        Err(error.error)
+    }
+}
+```
+
+**Update Order Page**:
+
+**File**: `frontend/src/pages/order.rs`
+
+```rust
+// Remove name input field
+// Pre-fill phone from user profile
+// Show user name from auth state
+
+view! {
+    <div class="order-page">
+        <h1>"Complete Your Order"</h1>
+
+        <div class="user-info">
+            <p>"Ordering as: " {move || auth_state.user.get().map(|u| u.name)}</p>
+        </div>
+
+        <div class="cart-summary">
+            // Cart items...
+        </div>
+
+        <form on:submit=on_submit>
+            <div class="form-group">
+                <label for="phone">"Phone Number"</label>
+                <input
+                    type="tel"
+                    id="phone"
+                    name="phone"
+                    required
+                    prop:value=phone  // Pre-filled from user profile
+                    on:input=move |ev| set_phone.set(event_target_value(&ev))
+                />
+            </div>
+
+            <div class="form-group">
+                <label for="pickup-time">"Pickup Time"</label>
+                // Date/time picker...
+            </div>
+
+            <button type="submit" disabled=move || loading.get()>
+                "Place Order"
+            </button>
+        </form>
+    </div>
+}
+```
 
 ---
 
-### Task 6.4: Environment Configuration
+### Task 12.4: User Profile Management
+**Estimation**: 2 hours
+**Priority**: Medium
+**Depends On**: Task 12.3
+
+**Deliverables**:
+- Create user profile page
+- Display user info (name, email, phone)
+- Allow editing phone number
+- Save profile updates to Ferriskey
+- Add profile link to navigation
+
+**File**: `frontend/src/pages/profile.rs`
+
+```rust
+#[component]
+pub fn ProfilePage() -> impl IntoView {
+    let auth_state = use_context::<AuthState>()
+        .expect("AuthState must be provided");
+
+    let (phone, set_phone) = create_signal(String::new());
+    let (editing, set_editing) = create_signal(false);
+    let (saving, set_saving) = create_signal(false);
+
+    // Load user profile
+    create_effect(move |_| {
+        if let Some(user) = auth_state.user.get() {
+            // Fetch full profile from backend
+            // set_phone...
+        }
+    });
+
+    let on_save = move |_| {
+        set_saving.set(true);
+        spawn_local(async move {
+            // Update profile via API
+            // ...
+            set_saving.set(false);
+            set_editing.set(false);
+        });
+    };
+
+    view! {
+        <div class="profile-page">
+            <h1>"My Profile"</h1>
+
+            <div class="profile-info">
+                <div class="field">
+                    <label>"Name"</label>
+                    <span>{move || auth_state.user.get().and_then(|u| u.name)}</span>
+                </div>
+
+                <div class="field">
+                    <label>"Email"</label>
+                    <span>{move || auth_state.user.get().map(|u| u.email)}</span>
+                </div>
+
+                <div class="field">
+                    <label>"Phone"</label>
+                    <Show
+                        when=move || editing.get()
+                        fallback=move || view! {
+                            <span>{phone}</span>
+                            <button on:click=move |_| set_editing.set(true)>"Edit"</button>
+                        }
+                    >
+                        <input
+                            type="tel"
+                            prop:value=phone
+                            on:input=move |ev| set_phone.set(event_target_value(&ev))
+                        />
+                        <button on:click=on_save disabled=move || saving.get()>
+                            "Save"
+                        </button>
+                        <button on:click=move |_| set_editing.set(false)>
+                            "Cancel"
+                        </button>
+                    </Show>
+                </div>
+            </div>
+        </div>
+    }
+}
+```
+
+---
+
+## Phase 13: Order History & User Dashboard (10 hours)
+
+### Task 13.1: Backend Order History Endpoint
+**Estimation**: 2 hours
+**Priority**: Critical
+**Depends On**: Phase 12
+
+**Deliverables**:
+- Create `GET /api/orders/history` endpoint
+- Return all orders for authenticated user
+- Add filtering by status (optional query param)
+- Add pagination support (page, limit)
+- Sort by created_at descending (newest first)
+- Include order items and details
+
+**File**: `backend/src/handlers/order_handler.rs`
+
+```rust
+pub async fn get_user_orders(
+    Extension(claims): Extension<Claims>,
+    State(state): State<AppState>,
+    Query(params): Query<OrderHistoryParams>,
+) -> Result<Json<OrderHistoryResponse>, AppError> {
+    let user_id = claims.sub;
+
+    let orders = state
+        .order_repo
+        .get_orders_by_user(&user_id, params.status, params.page, params.limit)
+        .await?;
+
+    let total_count = state
+        .order_repo
+        .count_user_orders(&user_id, params.status)
+        .await?;
+
+    Ok(Json(OrderHistoryResponse {
+        orders,
+        total_count,
+        page: params.page.unwrap_or(1),
+        limit: params.limit.unwrap_or(10),
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct OrderHistoryParams {
+    pub status: Option<OrderStatus>,
+    pub page: Option<u32>,
+    pub limit: Option<u32>,
+}
+
+#[derive(Serialize)]
+pub struct OrderHistoryResponse {
+    pub orders: Vec<Order>,
+    pub total_count: u64,
+    pub page: u32,
+    pub limit: u32,
+}
+```
+
+**Repository Implementation**:
+
+**File**: `backend/src/repository/order_repo.rs`
+
+```rust
+pub async fn get_orders_by_user(
+    &self,
+    user_id: &str,
+    status: Option<OrderStatus>,
+    page: Option<u32>,
+    limit: Option<u32>,
+) -> Result<Vec<Order>, DbError> {
+    let page = page.unwrap_or(1);
+    let limit = limit.unwrap_or(10);
+    let offset = (page - 1) * limit;
+
+    let query = match status {
+        Some(s) => format!(
+            "SELECT * FROM order WHERE user_id = $user_id AND status = $status \
+             ORDER BY created_at DESC LIMIT $limit START $offset"
+        ),
+        None => format!(
+            "SELECT * FROM order WHERE user_id = $user_id \
+             ORDER BY created_at DESC LIMIT $limit START $offset"
+        ),
+    };
+
+    // Execute query and return results
+    // ...
+}
+```
+
+---
+
+### Task 13.2: Frontend Order History Page
+**Estimation**: 3 hours
+**Priority**: Critical
+**Depends On**: Task 13.1
+
+**Deliverables**:
+- Create order history page component
+- Fetch and display user's orders
+- Show order status with visual indicators
+- Display order date, number, items, total
+- Add filter by status dropdown
+- Implement "View Details" for each order
+- Add loading and empty states
+- Style order cards
+
+**File**: `frontend/src/pages/order_history.rs`
+
+```rust
+#[component]
+pub fn OrderHistoryPage() -> impl IntoView {
+    let (orders, set_orders) = create_signal(Vec::<Order>::new());
+    let (loading, set_loading) = create_signal(true);
+    let (error, set_error) = create_signal(None::<String>);
+    let (filter_status, set_filter_status) = create_signal(None::<OrderStatus>);
+
+    // Fetch orders on mount and when filter changes
+    create_effect(move |_| {
+        let status = filter_status.get();
+        set_loading.set(true);
+
+        spawn_local(async move {
+            match fetch_user_orders(status).await {
+                Ok(response) => {
+                    set_orders.set(response.orders);
+                    set_loading.set(false);
+                }
+                Err(e) => {
+                    set_error.set(Some(e));
+                    set_loading.set(false);
+                }
+            }
+        });
+    });
+
+    view! {
+        <div class="order-history-page">
+            <h1>"My Orders"</h1>
+
+            <div class="filters">
+                <label>"Filter by status:"</label>
+                <select on:change=move |ev| {
+                    let value = event_target_value(&ev);
+                    set_filter_status.set(match value.as_str() {
+                        "all" => None,
+                        "pending" => Some(OrderStatus::Pending),
+                        "confirmed" => Some(OrderStatus::Confirmed),
+                        "preparing" => Some(OrderStatus::Preparing),
+                        "ready" => Some(OrderStatus::Ready),
+                        "picked_up" => Some(OrderStatus::PickedUp),
+                        "cancelled" => Some(OrderStatus::Cancelled),
+                        _ => None,
+                    });
+                }>
+                    <option value="all">"All Orders"</option>
+                    <option value="pending">"Pending"</option>
+                    <option value="confirmed">"Confirmed"</option>
+                    <option value="preparing">"Preparing"</option>
+                    <option value="ready">"Ready for Pickup"</option>
+                    <option value="picked_up">"Picked Up"</option>
+                    <option value="cancelled">"Cancelled"</option>
+                </select>
+            </div>
+
+            <Show
+                when=move || !loading.get()
+                fallback=|| view! { <div class="loading">"Loading orders..."</div> }
+            >
+                <Show
+                    when=move || !orders.get().is_empty()
+                    fallback=|| view! { <div class="empty-state">"No orders yet"</div> }
+                >
+                    <div class="orders-list">
+                        <For
+                            each=move || orders.get()
+                            key=|order| order.id.clone()
+                            children=move |order| {
+                                view! { <OrderCard order=order /> }
+                            }
+                        />
+                    </div>
+                </Show>
+            </Show>
+        </div>
+    }
+}
+
+#[component]
+fn OrderCard(order: Order) -> impl IntoView {
+    view! {
+        <div class="order-card">
+            <div class="order-header">
+                <h3>{order.order_number.clone()}</h3>
+                <span class={format!("status status-{}", order.status.to_string().to_lowercase())}>
+                    {order.status.to_string()}
+                </span>
+            </div>
+
+            <div class="order-details">
+                <p>"Date: " {order.created_at.format("%Y-%m-%d %H:%M").to_string()}</p>
+                <p>"Pickup: " {order.pickup_time.format("%Y-%m-%d %H:%M").to_string()}</p>
+                <p>"Items: " {order.items.len()}</p>
+                <p class="total">"Total: $" {format!("{:.2}", order.total_amount)}</p>
+            </div>
+
+            <a href={format!("/order-details/{}", order.id)} class="view-details">
+                "View Details"
+            </a>
+        </div>
+    }
+}
+```
+
+---
+
+### Task 13.3: Order Details Page
+**Estimation**: 2 hours
+**Priority**: High
+**Depends On**: Task 13.2
+
+**Deliverables**:
+- Create dedicated order details page
+- Display full order information
+- Show all ordered items with quantities and prices
+- Display customer info and pickup time
+- Show order status timeline/progress
+- Add "Reorder" button (copy items to cart)
+- Handle order not found scenario
+
+**File**: `frontend/src/pages/order_details.rs`
+
+```rust
+#[component]
+pub fn OrderDetailsPage() -> impl IntoView {
+    let params = use_params_map();
+    let order_id = move || params.get().get("id").cloned().unwrap_or_default();
+
+    let (order, set_order) = create_signal(None::<Order>);
+    let (loading, set_loading) = create_signal(true);
+    let (error, set_error) = create_signal(None::<String>);
+
+    create_effect(move |_| {
+        let id = order_id();
+        set_loading.set(true);
+
+        spawn_local(async move {
+            match fetch_order_by_id(&id).await {
+                Ok(o) => {
+                    set_order.set(Some(o));
+                    set_loading.set(false);
+                }
+                Err(e) => {
+                    set_error.set(Some(e));
+                    set_loading.set(false);
+                }
+            }
+        });
+    });
+
+    let on_reorder = move |_| {
+        if let Some(order) = order.get() {
+            // Add all items to cart
+            let cart = use_context::<CartState>().expect("CartState must be provided");
+            for item in order.items {
+                cart.add_item(/* ... */);
+            }
+
+            // Navigate to menu
+            leptos_router::use_navigate()("/menu", Default::default());
+        }
+    };
+
+    view! {
+        <div class="order-details-page">
+            <Show
+                when=move || !loading.get()
+                fallback=|| view! { <div>"Loading..."</div> }
+            >
+                <Show
+                    when=move || order.get().is_some()
+                    fallback=move || view! {
+                        <div class="error">
+                            {error.get().unwrap_or("Order not found".to_string())}
+                        </div>
+                    }
+                >
+                    {move || order.get().map(|o| view! {
+                        <div class="order-details">
+                            <h1>"Order " {o.order_number.clone()}</h1>
+
+                            <div class="status-timeline">
+                                <OrderStatusTimeline status=o.status.clone() />
+                            </div>
+
+                            <div class="order-info">
+                                <h2>"Order Information"</h2>
+                                <p>"Order Date: " {o.created_at.format("%Y-%m-%d %H:%M").to_string()}</p>
+                                <p>"Pickup Time: " {o.pickup_time.format("%Y-%m-%d %H:%M").to_string()}</p>
+                                <p>"Status: " {o.status.to_string()}</p>
+                            </div>
+
+                            <div class="order-items">
+                                <h2>"Order Items"</h2>
+                                <For
+                                    each=move || o.items.clone()
+                                    key=|item| item.id.clone()
+                                    children=move |item| {
+                                        view! {
+                                            <div class="item">
+                                                <span>{item.description()}</span>
+                                                <span>" x " {item.quantity}</span>
+                                                <span>"$" {format!("{:.2}", item.subtotal)}</span>
+                                            </div>
+                                        }
+                                    }
+                                />
+                                <div class="total">
+                                    <strong>"Total: $" {format!("{:.2}", o.total_amount)}</strong>
+                                </div>
+                            </div>
+
+                            <button on:click=on_reorder class="reorder-button">
+                                "Reorder"
+                            </button>
+                        </div>
+                    })}
+                </Show>
+            </Show>
+        </div>
+    }
+}
+```
+
+---
+
+### Task 13.4: User Dashboard
+**Estimation**: 2 hours
+**Priority**: Medium
+**Depends On**: Task 13.3
+
+**Deliverables**:
+- Create user dashboard page (landing after login)
+- Show recent orders (last 5)
+- Display order statistics (total orders, favorite pizza)
+- Quick actions: "Order Again", "View All Orders"
+- Welcome message with user name
+- Link to profile
+
+**File**: `frontend/src/pages/dashboard.rs`
+
+```rust
+#[component]
+pub fn DashboardPage() -> impl IntoView {
+    let auth_state = use_context::<AuthState>()
+        .expect("AuthState must be provided");
+
+    let (recent_orders, set_recent_orders) = create_signal(Vec::<Order>::new());
+    let (stats, set_stats) = create_signal(None::<OrderStats>);
+
+    // Fetch recent orders and stats
+    create_effect(move |_| {
+        spawn_local(async move {
+            // Fetch data...
+        });
+    });
+
+    view! {
+        <div class="dashboard">
+            <h1>"Welcome, " {move || auth_state.user.get().and_then(|u| u.name)}</h1>
+
+            <div class="quick-actions">
+                <a href="/menu" class="action-card">
+                    <h3>"Order Now"</h3>
+                    <p>"Browse our menu"</p>
+                </a>
+
+                <a href="/order-history" class="action-card">
+                    <h3>"Order History"</h3>
+                    <p>"View past orders"</p>
+                </a>
+
+                <a href="/profile" class="action-card">
+                    <h3>"Profile"</h3>
+                    <p>"Manage your info"</p>
+                </a>
+            </div>
+
+            <div class="recent-orders">
+                <h2>"Recent Orders"</h2>
+                // Display recent orders...
+            </div>
+
+            <div class="stats">
+                <h2>"Your Stats"</h2>
+                // Display statistics...
+            </div>
+        </div>
+    }
+}
+```
+
+---
+
+### Task 13.5: Navigation & Layout Updates
 **Estimation**: 1 hour
 **Priority**: High
-**Depends On**: Task 6.3
+**Depends On**: Task 13.4
 
 **Deliverables**:
-- Create `.env.development` for local development
-- Create `.env.production` for Docker deployment
-- Document environment variables in README
-- Add `.env.example` template
-- Configure database URLs, ports, CORS origins
+- Update navigation bar with authenticated menu
+- Show user name and avatar
+- Add dropdown menu: Dashboard, Profile, Order History, Logout
+- Update route structure to include new pages
+- Add breadcrumbs for better navigation
 
-**Variables**:
-- `DATABASE_URL`: ws://database:8000
-- `DATABASE_NAMESPACE`: royalpizza
-- `DATABASE_NAME`: production
-- `RUST_LOG`: info
-- `PORT`: 8080
-- `CORS_ALLOW_ORIGIN`: http://localhost:3000
+**File**: `frontend/src/components/navbar.rs`
 
-**Files**:
-- `.env.development`
-- `.env.production`
-- `.env.example`
+```rust
+#[component]
+pub fn NavBar() -> impl IntoView {
+    let auth_state = use_context::<AuthState>()
+        .expect("AuthState must be provided");
+
+    let on_logout = move |_| {
+        auth_state.logout();
+        leptos_router::use_navigate()("/login", Default::default());
+    };
+
+    view! {
+        <nav class="navbar">
+            <div class="nav-brand">
+                <a href="/">"Royal Pizza"</a>
+            </div>
+
+            <div class="nav-links">
+                <a href="/menu">"Menu"</a>
+
+                <Show
+                    when=move || auth_state.is_authenticated.get()
+                    fallback=|| view! {
+                        <a href="/login">"Login"</a>
+                        <a href="/register">"Register"</a>
+                    }
+                >
+                    <div class="user-menu">
+                        <button class="user-button">
+                            {move || auth_state.user.get().and_then(|u| u.name).unwrap_or("User".to_string())}
+                        </button>
+                        <div class="dropdown">
+                            <a href="/dashboard">"Dashboard"</a>
+                            <a href="/order-history">"Order History"</a>
+                            <a href="/profile">"Profile"</a>
+                            <button on:click=on_logout>"Logout"</button>
+                        </div>
+                    </div>
+                </Show>
+
+                <div class="cart-icon">
+                    <a href="/order">
+                        "🛒 " {move || /* cart count */}
+                    </a>
+                </div>
+            </div>
+        </nav>
+    }
+}
+```
 
 ---
 
-## Phase 7: Polish & Testing (9 hours)
+## Phase 14: Documentation Updates (4 hours)
 
-### Task 7.1: Responsive Design Implementation
-**Estimation**: 3 hours
-**Priority**: High
-**Depends On**: Task 3.8
-
-**Deliverables**:
-- Add CSS/styling for mobile, tablet, desktop breakpoints
-- Responsive grid for pizza cards (1-2-3 columns)
-- Mobile-friendly forms with proper input types
-- Touch-friendly buttons and controls
-- Test on different screen sizes
-- Add basic loading spinners and transitions
-
-**Breakpoints**:
-- Mobile: < 768px (1 column)
-- Tablet: 768px - 1024px (2 columns)
-- Desktop: > 1024px (3 columns)
-
-**File**: `frontend/index.html` or `frontend/src/styles.css`
-
----
-
-### Task 7.2: Loading States & User Feedback
-**Estimation**: 2 hours
-**Priority**: High
-**Depends On**: Task 7.1
-
-**Deliverables**:
-- Add loading spinners for API calls
-- Disable buttons during async operations
-- Show success messages (toast/notification)
-- Add animation for "Add to Cart" feedback
-- Implement optimistic UI updates where appropriate
-- Add skeleton screens for loading states
-
-**Components**:
-- `LoadingSpinner` component
-- `Toast` notification component
-- Skeleton cards for menu loading
-
-**Files**:
-- `frontend/src/components/loading.rs`
-- `frontend/src/components/toast.rs`
-
----
-
-### Task 7.3: Error Scenarios & Edge Cases
-**Estimation**: 2 hours
-**Priority**: High
-**Depends On**: Task 7.2
-
-**Deliverables**:
-- Test and handle network failures
-- Test with backend down
-- Test with database down
-- Handle invalid order IDs in confirmation page
-- Handle stale data (pizza no longer available)
-- Test concurrent orders
-- Test with invalid pickup times
-
-**Test Matrix**:
-| Scenario | Expected Behavior |
-|----------|-------------------|
-| Network error | Show error message, allow retry |
-| Backend down | Show maintenance message |
-| Invalid order ID | Show "Order not found" page |
-| Past pickup time | Validation error |
-| Empty cart | Disable "Proceed to Order" |
-| API timeout | Show timeout message, retry option |
-
----
-
-### Task 7.4: Final Integration Testing
+### Task 14.1: Update architecture.md
 **Estimation**: 1.5 hours
-**Priority**: Critical
-**Depends On**: Task 7.3
+**Priority**: High
+**Depends On**: Phase 13
 
 **Deliverables**:
-- Run full stack in Docker Compose
-- Test complete user journey end-to-end
-- Verify data persistence across container restarts
-- Test with multiple concurrent users (simulate)
-- Verify all API endpoints return correct data
-- Check logs for errors or warnings
-- Performance test: page load times, API response times
+- Document authentication flow with Ferriskey
+- Update architecture diagrams
+- Add JWT token flow explanation
+- Document new endpoints (auth, order history)
+- Update deployment architecture with Ferriskey
+- Add security considerations section
 
-**Success Criteria**:
-- All pages load in < 2 seconds
-- API responses in < 200ms
-- No console errors
-- Database persists data correctly
+**File**: `architecture.md`
+
+**New Sections**:
+```markdown
+## Authentication Architecture
+
+### Ferriskey Integration
+Royal Pizza uses Ferriskey as its Identity and Access Management (IAM) system.
+
+**Flow**:
+1. User registers/logs in via Ferriskey
+2. Ferriskey issues JWT access token
+3. Frontend stores JWT in local storage
+4. All API requests include JWT in Authorization header
+5. Backend validates JWT on protected routes
+
+### JWT Token Structure
+```json
+{
+  "sub": "user-id-123",
+  "email": "user@example.com",
+  "exp": 1234567890,
+  "iat": 1234567890
+}
+```
+
+### Protected Endpoints
+- `POST /api/orders` - Requires authentication
+- `GET /api/orders/:id` - Requires authentication + ownership
+- `GET /api/orders/history` - Requires authentication
+
+### Security
+- JWT secret stored as environment variable
+- Tokens expire after 24 hours
+- HTTPS required in production
+- CORS configured for allowed origins only
+```
 
 ---
 
-### Task 7.5: Documentation & Demo Preparation
+### Task 14.2: Update business.md
+**Estimation**: 1 hour
+**Priority**: High
+**Depends On**: Task 14.1
+
+**Deliverables**:
+- Document new user flows with authentication
+- Update user stories
+- Add order history feature description
+- Document user profile management
+- Update success metrics
+
+**File**: `business.md`
+
+**Updated User Stories**:
+```markdown
+## User Stories (Sprint 2)
+
+### Authentication
+- As a new user, I want to register an account so I can place orders
+- As a returning user, I want to log in to access my order history
+- As a logged-in user, I want my info saved so I don't re-enter it
+
+### Order Management
+- As an authenticated user, I want to view my past orders
+- As a user, I want to filter my orders by status
+- As a user, I want to reorder from my order history
+- As a user, I want to see detailed info about each order
+
+### Profile Management
+- As a user, I want to view and edit my profile
+- As a user, I want to update my phone number
+- As a user, I want to logout securely
+```
+
+---
+
+### Task 14.3: API Documentation
+**Estimation**: 1 hour
+**Priority**: Medium
+**Depends On**: Task 14.2
+
+**Deliverables**:
+- Create comprehensive API documentation
+- Document all endpoints with examples
+- Add authentication requirements
+- Document request/response formats
+- Add error codes and messages
+- Create OpenAPI/Swagger spec (optional)
+
+**File**: `docs/API.md`
+
+**Content**:
+```markdown
+# Royal Pizza API Documentation
+
+## Authentication
+
+All protected endpoints require a JWT token in the Authorization header:
+```
+Authorization: Bearer <token>
+```
+
+## Endpoints
+
+### Authentication (via Ferriskey)
+- `POST /auth/register` - Register new user
+- `POST /auth/login` - Login and receive JWT
+- `POST /auth/logout` - Logout (invalidate token)
+
+### Pizzas (Public)
+- `GET /api/pizzas` - List all available pizzas
+- `GET /api/pizzas/:id` - Get pizza details
+
+### Orders (Protected)
+- `POST /api/orders` - Create new order (requires auth)
+- `GET /api/orders/:id` - Get order details (requires auth + ownership)
+- `GET /api/orders/history` - Get user's order history (requires auth)
+
+### Health
+- `GET /api/health` - Service health check
+
+## Examples
+
+### Create Order
+**Request**:
+```json
+POST /api/orders
+Authorization: Bearer eyJhbGc...
+
+{
+  "items": [
+    {
+      "pizza_id": "pizza-1",
+      "size": "large",
+      "quantity": 2
+    }
+  ],
+  "phone": "+1234567890",
+  "pickup_time": "2026-02-14T18:00:00Z"
+}
+```
+
+**Response**:
+```json
+{
+  "order_id": "order-123",
+  "order_number": "RP-20260213-001",
+  "estimated_pickup": "2026-02-14T18:00:00Z"
+}
+```
+```
+
+---
+
+### Task 14.4: Deployment & Operations Guide
 **Estimation**: 0.5 hours
 **Priority**: Medium
-**Depends On**: Task 7.4
+**Depends On**: Task 14.3
 
 **Deliverables**:
-- Update README.md with:
-  - Project overview
-  - Architecture diagram
-  - Setup instructions
-  - Running with Docker Compose
-  - Development workflow
-  - API documentation link
-- Create demo script with happy path
-- Prepare sample orders for demo
-- Screenshot key pages for documentation
+- Document production deployment steps
+- Add environment variable setup guide
+- Document Ferriskey configuration
+- Add monitoring and logging guide
+- Create troubleshooting section
 
-**File**: `README.md`
+**File**: `docs/DEPLOYMENT.md`
 
 ---
 
-## Execution Plan for Claude.ai
+## Phase 15: Final Testing & Production Readiness (10 hours)
 
-### Pre-Development Checklist
-- [ ] Confirm Rust 1.93+ installed
-- [ ] Confirm Docker and Docker Compose installed
-- [ ] Confirm Trunk installed (`cargo install trunk`)
-- [ ] Confirm wasm32-unknown-unknown target added (`rustup target add wasm32-unknown-unknown`)
-- [ ] Review architecture.md and business.md
+### Task 15.1: Security Audit
+**Estimation**: 2 hours
+**Priority**: Critical
+**Depends On**: Phase 14
 
----
+**Deliverables**:
+- Review JWT implementation for vulnerabilities
+- Check for SQL injection risks
+- Verify input validation on all endpoints
+- Test authorization checks (can't access other users' orders)
+- Check for XSS vulnerabilities in frontend
+- Verify CORS configuration
+- Test rate limiting (if implemented)
+- Scan dependencies for known vulnerabilities
 
-### Development Order (Optimized for Claude.ai)
+**Tools**:
+- `cargo audit` for Rust dependencies
+- `npm audit` for JavaScript dependencies (Playwright)
+- Manual security testing
+- OWASP Top 10 checklist
 
-**Week 1: Foundation (Days 1-3)**
-
-**Day 1: Workspace & Models (7 hours)**
-- Execute Phase 0 tasks (0.1 → 0.4) in sequence
-- Execute Phase 1 tasks (1.1 → 1.3) in sequence
-- Verify: `cargo check` passes for all workspace members
-- Commit: "chore: initialize workspace and data models"
-
-**Day 2: Backend API (8 hours)**
-- Execute Phase 2 tasks (2.1 → 2.5) in sequence
-- Test backend with curl or Postman
-- Verify: All endpoints return expected responses
-- Commit: "feat: implement backend API with Axum"
-
-**Day 3: Database Integration (8 hours)**
-- Execute Phase 5 tasks (5.1 → 5.5) in sequence
-- Start SurrealDB locally
-- Run schema and seed scripts
-- Test backend with real database
-- Verify: Data persists and queries work
-- Commit: "feat: integrate SurrealDB with schema and seed data"
-
----
-
-**Week 2: Frontend & Polish (Days 4-7)**
-
-**Day 4: Frontend Foundation (8 hours)**
-- Execute Phase 3 tasks (3.1 → 3.3) in sequence
-- Execute Task 3.4 (Pizza Card Component)
-- Verify: Pages render, routing works, API client functional
-- Commit: "feat: implement Leptos frontend foundation and routing"
-
-**Day 5: Frontend UI (8 hours)**
-- Execute Phase 3 tasks (3.5 → 3.8) in sequence
-- Test UI interactions locally
-- Verify: Complete user flow from menu to confirmation
-- Commit: "feat: complete frontend UI with all pages and components"
-
-**Day 6: Integration & Docker (8 hours)**
-- Execute Phase 4 tasks (4.1 → 4.5) in sequence
-- Execute Phase 6 tasks (6.1 → 6.4) in sequence
-- Test full stack in Docker Compose
-- Verify: All services start and communicate
-- Commit: "feat: add CORS, error handling, and Docker deployment"
-
-**Day 7: Polish & Demo (9 hours)**
-- Execute Phase 7 tasks (7.1 → 7.5) in sequence
-- Run comprehensive tests
-- Fix any bugs found
-- Prepare demo
-- Verify: All acceptance criteria met
-- Commit: "chore: polish UI, add responsive design, and finalize documentation"
+**Security Checklist**:
+- [ ] JWT secret is strong and environment-specific
+- [ ] Passwords are hashed (handled by Ferriskey)
+- [ ] SQL injection prevented (parameterized queries)
+- [ ] Authorization checks on all protected routes
+- [ ] Input validation on client and server
+- [ ] HTTPS enforced in production
+- [ ] CORS properly configured
+- [ ] No sensitive data in logs
+- [ ] Error messages don't leak information
+- [ ] Dependencies up to date
 
 ---
 
-### Parallel Execution Opportunities
+### Task 15.2: Performance Testing
+**Estimation**: 2 hours
+**Priority**: High
+**Depends On**: Task 15.1
 
-**Can be done in parallel (same developer):**
-- Phase 1 (Models) ← No dependencies
-- Phase 5.1 (Schema) ← Can start while working on backend
-- Phase 6.4 (Environment) ← Can prepare anytime
+**Deliverables**:
+- Load test API endpoints
+- Measure response times under load
+- Test database performance with many orders
+- Optimize slow queries
+- Test frontend performance
+- Measure WASM bundle size
+- Add performance metrics
 
-**Cannot be parallelized:**
-- Backend must be complete before frontend integration
-- Database must be ready before repository implementation
-- Dockerfiles depend on working code
+**Tools**:
+- `wrk` or `artillery` for load testing
+- Browser DevTools for frontend profiling
+- `cargo bench` for Rust benchmarks
+
+**Performance Targets**:
+- API p95 < 100ms
+- Menu load time < 1s
+- Order creation < 200ms
+- Support 100 concurrent users
+- Frontend bundle < 2MB
 
 ---
 
-### Critical Path
+### Task 15.3: E2E Test Suite Completion
+**Estimation**: 3 hours
+**Priority**: Critical
+**Depends On**: Task 15.2
 
-The critical path for MVP delivery:
+**Deliverables**:
+- Run full Playwright test suite
+- Fix any failing tests
+- Add missing test coverage
+- Test on all browsers (Chrome, Firefox, Safari)
+- Test on mobile viewports
+- Add CI/CD pipeline for automated tests
+- Configure test reporting
 
+**CI/CD Integration**:
+
+**File**: `.github/workflows/test.yml`
+
+```yaml
+name: E2E Tests
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker
+        run: docker-compose up -d
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: npm ci && npx playwright install --with-deps
+
+      - name: Run tests
+        working-directory: e2e
+        run: npx playwright test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
 ```
-Phase 0 → Phase 1 → Phase 2 → Phase 5 → Phase 3 → Phase 4 → Phase 6 → Phase 7
-  (4h)     (3h)      (8h)      (8h)      (12h)     (6h)      (6h)      (9h)
-```
-
-**Total Critical Path Time**: 56 hours
 
 ---
 
-### Risk Mitigation
+### Task 15.4: Production Deployment
+**Estimation**: 2 hours
+**Priority**: Critical
+**Depends On**: Task 15.3
 
-| Risk | Impact | Mitigation Strategy |
-|------|--------|---------------------|
-| SurrealDB version compatibility | High | Use exact version 2.6.0, test early |
-| WASM build issues | Medium | Test Trunk build in Phase 0.3 |
-| Docker networking | Medium | Use docker-compose networks, test early |
-| CORS errors | Low | Configure properly in Phase 4.1 |
-| Leptos CSR limitations | Medium | Test API calls early in Phase 3.3 |
+**Deliverables**:
+- Deploy to production environment
+- Configure production environment variables
+- Set up database backups
+- Configure monitoring and alerts
+- Test production deployment
+- Smoke test all critical paths
+- Set up logging aggregation
 
----
+**Deployment Checklist**:
+- [ ] Production environment variables configured
+- [ ] JWT secret is unique and secure
+- [ ] Database credentials are secure
+- [ ] HTTPS certificates configured
+- [ ] CORS origins set to production domain
+- [ ] Database backups scheduled
+- [ ] Monitoring and alerts configured
+- [ ] Logs being collected
+- [ ] Health checks passing
+- [ ] All services starting correctly
 
-### Success Metrics
-
-**Technical Metrics**:
-- ✅ All Cargo.toml files compile without errors
-- ✅ Backend API endpoints return 2xx responses
-- ✅ Frontend builds WASM successfully with Trunk
-- ✅ Docker Compose starts all 3 services
-- ✅ Database persists data across restarts
-- ✅ End-to-end order flow completes successfully
-
-**Business Metrics**:
-- ✅ User can browse 9 pizzas + custom option
-- ✅ User can add items to cart with quantities
-- ✅ User can submit order with name, phone, pickup time
-- ✅ User receives order confirmation with order number
-- ✅ Orders are saved to database
-
-**Quality Metrics**:
-- ✅ Page load time < 2 seconds
-- ✅ API response time < 200ms (p95)
-- ✅ No console errors in browser
-- ✅ Responsive design works on mobile and desktop
-- ✅ Error messages are user-friendly
+**Monitoring Setup**:
+- Health check endpoints monitored
+- Error rate alerts
+- Response time alerts
+- Database connection alerts
+- Disk space monitoring
 
 ---
 
-## Post-MVP Enhancements (Out of Scope)
+### Task 15.5: User Acceptance Testing (UAT)
+**Estimation**: 1 hour
+**Priority**: High
+**Depends On**: Task 15.4
 
-For future versions:
-- User authentication and order history
-- Payment integration (Stripe, PayPal)
-- Real-time order status tracking
-- Admin panel for order management
-- Email/SMS notifications
-- Delivery option (not just pickup)
-- Advanced custom pizza builder (drag-and-drop ingredients)
-- Reviews and ratings
-- Promotional codes and discounts
-- Analytics dashboard
+**Deliverables**:
+- Manual UAT testing of all features
+- Test with real user scenarios
+- Verify all user stories completed
+- Check responsive design on devices
+- Test error scenarios
+- Gather feedback
+- Document any issues for future sprints
 
----
-
-## Notes for Claude.ai Implementation
-
-### Best Practices
-1. **Commit frequently**: After each task completion
-2. **Test incrementally**: Verify each component before moving to next
-3. **Use workspace dependencies**: Single source of truth for versions
-4. **Shared code first**: Define models in `shared/` before using in `backend/` or `frontend/`
-5. **Error handling**: Always return Result types, never panic in production code
-6. **Logging**: Use tracing macros (info!, debug!, error!) throughout backend
-7. **Type safety**: Leverage Rust's type system for compile-time guarantees
-
-### Common Pitfalls to Avoid
-- ❌ Don't hardcode API URLs in frontend (use environment variables)
-- ❌ Don't use `unwrap()` or `expect()` in backend handlers
-- ❌ Don't forget CORS configuration (will cause frontend API calls to fail)
-- ❌ Don't forget to add `#[derive(Serialize, Deserialize)]` to all DTOs
-- ❌ Don't use blocking I/O in async functions
-- ❌ Don't forget to validate input on both client and server side
-
-### Debugging Tips
-- Use `RUST_LOG=debug` to see detailed logs
-- Use browser DevTools Network tab to inspect API calls
-- Use `docker-compose logs <service>` to view container logs
-- Use `surreal sql` CLI to query database directly
-- Use `trunk serve --open` for live reload during frontend development
+**UAT Scenarios**:
+1. New user registration and first order
+2. Returning user login and reorder
+3. Browse menu, add multiple items, checkout
+4. View order history and filter
+5. Update profile information
+6. Mobile ordering experience
+7. Error handling (network issues, etc.)
 
 ---
 
-## Version History
+## Success Metrics (Sprint 2)
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | 2026-02-08 | Initial storyboard based on architecture.md and business.md |
+### Technical Metrics
+- ✅ All Clippy warnings resolved
+- ✅ E2E test coverage > 80%
+- ✅ All security checks passing
+- ✅ API response time p95 < 100ms
+- ✅ Frontend load time < 1s
+- ✅ Zero critical vulnerabilities
+
+### Feature Metrics
+- ✅ User authentication with Ferriskey working
+- ✅ Orders associated with users
+- ✅ Order history functional
+- ✅ User profile management working
+- ✅ E2E tests passing on all browsers
+
+### Quality Metrics
+- ✅ Code review completed
+- ✅ Documentation updated
+- ✅ Production deployment successful
+- ✅ UAT completed with no blockers
 
 ---
 
-**Last Updated**: 2026-02-08
+## Execution Plan (Sprint 2)
+
+### Week 1: Infrastructure & Authentication (Days 1-4)
+
+**Day 1: Docker & Quality (7 hours)**
+- Phase 8: Production Docker Configuration
+- Phase 9: Code Quality & Refactoring
+
+**Day 2-3: E2E Testing Setup (16 hours)**
+- Phase 10: E2E Testing with Playwright
+- Set up all test scenarios
+
+**Day 4: IAM Setup (6 hours)**
+- Phase 11 Tasks 11.1-11.2: Ferriskey integration
+
+### Week 2: Features & Testing (Days 5-8)
+
+**Day 5: Authentication UI (6 hours)**
+- Phase 11 Tasks 11.3-11.5: Frontend auth
+
+**Day 6: Authenticated Orders (8 hours)**
+- Phase 12: Complete authenticated order flow
+
+**Day 7-8: Order History & Polish (14 hours)**
+- Phase 13: Order history feature
+- Phase 14: Documentation updates
+
+### Week 3: Final Testing & Deploy (Days 9-10)
+
+**Day 9-10: Production Readiness (10 hours)**
+- Phase 15: Security, performance, deployment
+
+---
+
+## Risk Mitigation (Sprint 2)
+
+| Risk | Impact | Mitigation |
+|------|--------|-----------|
+| Ferriskey integration complexity | High | Start early, thorough testing |
+| JWT security vulnerabilities | Critical | Security audit, follow best practices |
+| E2E test flakiness | Medium | Proper waits, retry logic |
+| Performance degradation | Medium | Load testing, optimization |
+| Migration of existing orders | Low | Script to add user_id to existing orders |
+
+---
+
+## Post-Sprint 2 Enhancements
+
+Future improvements:
+- Real-time order status updates (WebSockets)
+- Email notifications for order status
+- Admin dashboard for order management
+- Advanced analytics and reporting
+- Loyalty program integration
+- Social authentication (Google, Facebook)
+- Order scheduling (future dates)
+- Delivery option (in addition to pickup)
+- Menu customization for dietary restrictions
+
+---
+
+## Notes
+
+### Breaking Changes from Sprint 1
+1. **Authentication Required**: Users must register/login to place orders
+2. **Order Model**: Added `user_id` field (migration needed)
+3. **API Changes**: All order endpoints now require authentication
+
+### Migration Strategy
+- Existing anonymous orders: assign to a placeholder "guest" user
+- Or: mark old orders with `user_id: null` (handle in queries)
+
+### Development Workflow
+**Production**: `docker-compose up` (all services)
+**Development**:
+- `docker-compose -f docker-compose.dev.yml up database ferriskey`
+- Terminal 1: `cd backend && cargo run`
+- Terminal 2: `cd frontend && trunk serve`
+- Terminal 3: E2E tests when needed
+
+---
+
+**Version**: 2.0
+**Last Updated**: 2026-02-13
 **Prepared By**: Claude Code
-**Status**: Ready for Implementation
+**Status**: Ready for Implementation (Sprint 2)
